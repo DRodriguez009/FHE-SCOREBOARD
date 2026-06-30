@@ -715,26 +715,37 @@ function fireConfetti(){
 }
 
 // ── ANNOUNCEMENT ──
-function setAnnouncement(){
+async function setAnnouncement(){
   const msg=document.getElementById('announce-input').value.trim();
   if(!msg)return;
-  localStorage.setItem('fhe_announce',msg);
-  showAnnouncement(msg);
-  document.getElementById('announce-input').value='';
-  alert$('admin-alert','Announcement posted!','success');
+  try{
+    await sb.from('announcements').upsert({id:1,message:msg,updated_at:new Date().toISOString()});
+    showAnnouncement(msg);
+    document.getElementById('announce-input').value='';
+    alert$('admin-alert','Announcement posted! All agents will see it.','success');
+  }catch(e){alert$('admin-alert','Error posting announcement.','error');}
 }
-function clearAnnouncement(){
-  localStorage.removeItem('fhe_announce');
-  document.getElementById('announce-bar').classList.remove('visible');
-  alert$('admin-alert','Announcement cleared.','info');
+async function clearAnnouncement(){
+  try{
+    await sb.from('announcements').upsert({id:1,message:null,updated_at:new Date().toISOString()});
+    document.getElementById('announce-bar').classList.remove('visible');
+    alert$('admin-alert','Announcement cleared.','info');
+  }catch(e){alert$('admin-alert','Error clearing announcement.','error');}
 }
 function showAnnouncement(msg){
-  if(!msg)return;
+  if(!msg){document.getElementById('announce-bar').classList.remove('visible');return;}
   document.getElementById('announce-text').textContent='🏈 '+msg+' · 🏈 '+msg+' · ';
   document.getElementById('announce-bar').classList.add('visible');
 }
-const savedAnnounce=localStorage.getItem('fhe_announce');
-if(savedAnnounce)showAnnouncement(savedAnnounce);
+// Load announcement from Supabase on page load and every 30s so all agents see it
+async function loadAnnouncement(){
+  try{
+    const{data}=await sb.from('announcements').select('message').eq('id',1).single();
+    showAnnouncement(data?.message||null);
+  }catch(e){}
+}
+loadAnnouncement();
+setInterval(loadAnnouncement,30000);
 
 // ── STREAK / PERSONAL BEST ──
 function calcStreak(comms,agentId){
@@ -1470,7 +1481,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();con
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-06-30-013';
+const APP_VERSION='2026-06-30-014';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
