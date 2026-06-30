@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>First Health Enrollment — Commission Scoreboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --black:#0a0a0f;--dark:#111118;--card:#18181f;--border:#2a2a38;
+    --gold:#c9a84c;--gold2:#e8c96d;--blue:#1a6fbf;--blue2:#2589e8;
+    --blue-bg:#0d2240;--text:#f0f0f0;--muted:#8888aa;
+    --green:#29a86b;--red:#d94444;--r:6px;--rl:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);min-height:100vh}
+
+  /* ── HEADER ── */
+  .hdr{background:var(--dark);border-bottom:2px solid var(--gold);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:200}
+  .logo{display:flex;align-items:center;gap:12px;cursor:pointer}
+  .logo-box{width:38px;height:38px;background:var(--blue);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:18px;color:#fff;border:1px solid var(--blue2);flex-shrink:0}
+  .logo-text .l1{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:16px;text-transform:uppercase;letter-spacing:.5px;line-height:1.1}
+  .logo-text .l2{font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;font-weight:600}
+  .hdr-right{display:flex;align-items:center;gap:8px}
+  .live-badge{background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:5px}
+  .live-dot{width:6px;height:6px;background:#fff;border-radius:50%;animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  /* ── TOP NAV TABS ── */
+  .top-nav{background:var(--dark);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 1.5rem;gap:0;position:sticky;top:60px;z-index:100}
+  .tnav-btn{padding:13px 20px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;white-space:nowrap}
+  .tnav-btn:hover{color:var(--text)}
+  .tnav-btn.active{color:var(--gold);border-bottom-color:var(--gold)}
+  .tnav-btn.admin-btn{margin-left:auto;color:var(--muted)}
+  .tnav-btn.admin-btn.active{color:#fff;border-bottom-color:#fff}
+  .pcnt-pill{background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:5px;vertical-align:middle}
+
+  /* ── PAGES ── */
+  .page{display:none;padding:1.5rem;max-width:960px;margin:0 auto}
+  .page.active{display:block}
+
+  /* ── PERIOD BAR ── */
+  .period-bar{display:flex;background:#0d0d18;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;width:fit-content}
+  .period-btn{padding:7px 18px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border:none;background:none;cursor:pointer;transition:background .15s,color .15s;border-right:1px solid var(--border)}
+  .period-btn:last-child{border-right:none}
+  .period-btn:hover{color:var(--text);background:#1a1a2a}
+  .period-btn.active{background:var(--gold);color:#0a0a0f}
+
+  /* ── TV BOARD ── */
+  .tv-wrap{background:#07070e;border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:1rem}
+  .tv-hdr{background:#0d0d18;border-bottom:2px solid var(--gold);padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  .eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--gold);margin-bottom:4px}
+  .tv-hdr h2{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:28px;text-transform:uppercase;letter-spacing:2px;color:#fff}
+  .tv-updated{font-size:11px;color:var(--muted);margin-top:3px}
+  .tv-period-pill{background:#1a1a2e;border:1px solid var(--gold);border-radius:99px;padding:5px 14px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--gold)}
+  .tv-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));border-bottom:1px solid var(--border)}
+  .tv-stat{padding:1rem 1.25rem;border-right:1px solid var(--border);text-align:center}
+  .tv-stat:last-child{border-right:none}
+  .tsl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px}
+  .tsv{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--gold)}
+  .tv-rows{padding:.5rem 0}
+  .tv-row{display:grid;grid-template-columns:56px 1fr 60px 140px;align-items:center;padding:13px 1.5rem;border-bottom:1px solid #111122;transition:background .2s}
+  .tv-row:last-child{border-bottom:none}
+  .tv-row.r1{background:linear-gradient(90deg,rgba(201,168,76,.1),transparent 70%)}
+  .tv-row.r2{background:linear-gradient(90deg,rgba(180,180,180,.04),transparent 70%)}
+  .tv-row.r3{background:linear-gradient(90deg,rgba(160,120,90,.04),transparent 70%)}
+  .tv-rank{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--muted);text-align:center}
+  .tv-row.r1 .tv-rank{color:var(--gold);font-size:28px}
+  .tv-row.r2 .tv-rank{color:#c0c0c0}
+  .tv-row.r3 .tv-rank{color:#b08060}
+  .tv-name{font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#fff}
+  .tv-sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .tv-bar-bg{height:5px;background:#1a1a2e;border-radius:99px;overflow:hidden;margin-top:7px}
+  .tv-bar-fill{height:100%;border-radius:99px;background:var(--blue);transition:width .6s ease}
+  .tv-bar-fill.gbar{background:linear-gradient(90deg,var(--gold),var(--gold2))}
+  .tv-pct{font-size:12px;color:var(--muted);text-align:center}
+  .tv-amount{font-family:'Barlow Condensed',sans-serif;font-size:21px;font-weight:700;text-align:right;color:#fff}
+  .tv-row.r1 .tv-amount{color:var(--gold2);font-size:24px}
+  .zero-row{opacity:.4}
+  .move-up{color:#4dd68c;font-size:11px;font-weight:700;margin-left:5px}
+  .move-down{color:var(--red);font-size:11px;font-weight:700;margin-left:5px}
+
+  /* ── CARDS ── */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1rem}
+  .card-title{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:1rem;display:flex;align-items:center;gap:8px}
+  .card-title::before{content:'';display:inline-block;width:3px;height:16px;background:var(--gold);border-radius:2px}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1.25rem}
+  .stat-mini{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:.875rem 1rem}
+  .stat-mini-lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:5px}
+  .stat-mini-val{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700}
+
+  /* ── FORMS ── */
+  .form-group{margin-bottom:1rem}
+  .form-label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px}
+  input[type=text],input[type=number],input[type=password],select{width:100%;padding:10px 14px;background:#0f0f17;border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;outline:none;transition:border-color .15s;-webkit-appearance:none}
+  input:focus,select:focus{border-color:var(--blue2)}
+  select option{background:#0f0f17}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+
+  /* ── BUTTONS ── */
+  .btn{padding:10px 20px;border:none;border-radius:var(--r);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;text-transform:uppercase;letter-spacing:1px;cursor:pointer;transition:opacity .15s,transform .1s;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{opacity:.88}
+  .btn:active{transform:scale(.98)}
+  .btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0a0a0f}
+  .btn-blue{background:var(--blue);color:#fff}
+  .btn-blue:hover{background:var(--blue2);opacity:1}
+  .btn-green{background:var(--green);color:#fff}
+  .btn-red{background:var(--red);color:#fff}
+  .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
+  .btn-ghost:hover{border-color:var(--gold);color:var(--gold);opacity:1}
+  .btn-sm{padding:6px 12px;font-size:12px}
+  .btn-full{width:100%;justify-content:center}
+
+  /* ── BADGES & ALERTS ── */
+  .badge{display:inline-block;padding:3px 9px;border-radius:3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  .badge-pending{background:#2a1f00;color:var(--gold);border:1px solid #3a2c00}
+  .badge-approved{background:#0a2a15;color:#4dd68c;border:1px solid #0d3a1e}
+  .badge-rejected{background:#2a0a0a;color:#f07070;border:1px solid #3a1010}
+  .alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem;border-left:3px solid}
+  .alert-success{background:#0a2a15;color:#4dd68c;border-color:var(--green)}
+  .alert-error{background:#2a0a0a;color:#f07070;border-color:var(--red)}
+  .alert-info{background:var(--blue-bg);color:var(--blue2);border-color:var(--blue)}
+
+  /* ── LISTS ── */
+  .entry-list{border-radius:var(--rl);overflow:hidden;border:1px solid var(--border)}
+  .entry-row{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card);font-size:13px;transition:background .15s}
+  .entry-row:last-child{border-bottom:none}
+  .entry-row:hover{background:#1e1e2a}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--blue-bg);border:1px solid var(--blue);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--blue2);flex-shrink:0}
+  .flex{display:flex;align-items:center;gap:8px}
+  .flex-between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .empty{text-align:center;padding:3rem 1rem;color:var(--muted);font-size:14px;font-style:italic}
+  .section-label{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:1.25rem 0 .75rem;display:flex;align-items:center;gap:8px}
+  .section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ── MODAL ── */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center;padding:1rem}
+  .modal-overlay.open{display:flex}
+  .modal{background:var(--dark);border:1px solid var(--border);border-radius:var(--rl);padding:1.5rem;width:100%;max-width:420px;border-top:3px solid var(--gold)}
+  .modal-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:20px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:1.25rem}
+
+  /* ── ADMIN INNER TABS ── */
+  .inner-nav{display:flex;border-bottom:1px solid var(--border);margin-bottom:1.25rem}
+  .itab{padding:9px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
+  .itab:hover{color:var(--text)}
+  .itab.active{color:var(--gold);border-bottom-color:var(--gold)}
+
+  /* ── AGENT LOGIN OVERLAY ── */
+  .agent-login-bar{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1.25rem;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+  .agent-login-bar .form-group{margin-bottom:0;flex:1;min-width:140px}
+
+  @media(max-width:640px){
+    .form-row,.form-row-3{grid-template-columns:1fr}
+    .tv-row{grid-template-columns:40px 1fr 46px 90px}
+    .top-nav{overflow-x:auto;gap:0}
+    .tnav-btn{padding:13px 14px;font-size:11px}
+    .agent-login-bar{flex-direction:column}
+    .agent-login-bar .btn{width:100%;justify-content:center}
+  }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header class="hdr">
+  <div class="logo" onclick="navTo('scoreboard')">
+    <div class="logo-box">FH</div>
+    <div class="logo-text">
+      <div class="l1">First Health Enrollment</div>
+      <div class="l2">Commission Scoreboard</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="live-badge"><div class="live-dot"></div> Live</div>
+  </div>
+</header>
+
+<!-- ── TOP NAV ── -->
+<nav class="top-nav">
+  <button class="tnav-btn active" id="tn-scoreboard" onclick="navTo('scoreboard')">📺 Scoreboard</button>
+  <button class="tnav-btn" id="tn-agent"      onclick="navTo('agent')">👤 Agent Portal</button>
+  <button class="tnav-btn admin-btn" id="tn-admin" onclick="navTo('admin')">🛡️ Admin <span class="pcnt-pill" id="hdr-pcnt" style="display:none">0</span></button>
+</nav>
+
+<!-- ══════════════════════════════════════
+     PAGE: SCOREBOARD
+══════════════════════════════════════ -->
+<div class="page active" id="page-scoreboard">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px;padding-top:.25rem">
+    <div class="period-bar">
+      <button class="period-btn active" id="pb-today" onclick="setPeriod('today')">Today</button>
+      <button class="period-btn" id="pb-week"  onclick="setPeriod('week')">Week to date</button>
+      <button class="period-btn" id="pb-all"   onclick="setPeriod('all')">All time</button>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="loadBoard()">↻ Refresh</button>
+  </div>
+
+  <div class="tv-wrap">
+    <div class="tv-hdr">
+      <div>
+        <div class="eyebrow">First Health Enrollment</div>
+        <h2>Agent Leaderboard</h2>
+        <div class="tv-updated" id="tv-updated">Loading...</div>
+      </div>
+      <div class="tv-period-pill" id="tv-period-pill">Today</div>
+    </div>
+    <div class="tv-stats" id="tv-stats"></div>
+    <div class="tv-rows" id="tv-rows"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+  </div>
+  <div style="text-align:center;font-size:11px;color:var(--muted)">Auto-refreshes every 30s · Approved commissions only · All agents shown</div>
+</div>
+
+<!-- ══════════════════════════════════════
+     PAGE: AGENT PORTAL
+══════════════════════════════════════ -->
+<div class="page" id="page-agent">
+
+  <!-- NOT LOGGED IN -->
+  <div id="agent-login-section">
+    <div style="max-width:440px;margin:2rem auto">
+      <div style="text-align:center;margin-bottom:1.5rem">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--gold)">Agent Sign In</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">Enter your name and PIN to submit commissions</div>
+      </div>
+      <div class="card">
+        <div id="al-alert"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Your name</label><input type="text" id="al-name" placeholder="Registered name"></div>
+          <div class="form-group"><label class="form-label">PIN</label><input type="password" id="al-pin" placeholder="4-digit PIN" maxlength="4"></div>
+        </div>
+        <button class="btn btn-blue btn-full" onclick="agentLogin()"><span id="al-spin" style="display:none"><span class="spinner"></span></span>Sign In</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOGGED IN -->
+  <div id="agent-portal-section" style="display:none">
+    <div class="flex-between" style="margin-bottom:1.25rem;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;text-transform:uppercase;letter-spacing:1px" id="agent-welcome">Agent Portal</div>
+        <div style="font-size:12px;color:var(--muted)">Submit and track your commissions</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="agentLogout()">Sign out</button>
+    </div>
+    <div id="submit-alert"></div>
+    <div class="stat-grid" id="agent-stats"></div>
+    <div class="card">
+      <div class="card-title">Submit a Commission</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Amount ($)</label><input type="number" id="cm-amount" placeholder="e.g. 1500" min="0" step="0.01"></div>
+        <div class="form-group"><label class="form-label">Note (optional)</label><input type="text" id="cm-note" placeholder="e.g. Client name or plan"></div>
+      </div>
+      <button class="btn btn-gold" onclick="submitComm()"><span id="cm-spin" style="display:none"><span class="spinner"></span></span>Submit Commission</button>
+    </div>
+    <div class="section-label">My Submissions</div>
+    <div class="entry-list" id="agent-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     PAGE: ADMIN
+══════════════════════════════════════ -->
+<div class="page" id="page-admin">
+
+  <!-- ADMIN LOGIN -->
+  <div id="admin-login-section">
+    <div style="max-width:400px;margin:2rem auto">
+      <div style="text-align:center;margin-bottom:1.5rem">
+        <div style="font-size:40px;margin-bottom:.5rem">🛡️</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:800;text-transform:uppercase;letter-spacing:1px">Admin Access</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">First Health Enrollment</div>
+      </div>
+      <div class="card">
+        <div id="adl-alert"></div>
+        <div class="form-group"><label class="form-label">Username</label><input type="text" id="adl-user" value="admin"></div>
+        <div class="form-group"><label class="form-label">Password</label><input type="password" id="adl-pass" placeholder="Admin1234!"></div>
+        <button class="btn btn-blue btn-full" onclick="adminLogin()"><span id="adl-spin" style="display:none"><span class="spinner"></span></span>Sign In</button>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:10px">Default: admin / Admin1234!</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div id="admin-panel-section" style="display:none">
+    <div class="flex-between" style="margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--gold)">Admin Panel</div>
+        <div style="font-size:12px;color:var(--muted)">Manage agents and approve commissions</div>
+      </div>
+      <div class="flex">
+        <button class="btn btn-ghost btn-sm" onclick="loadAdmin()">↻ Refresh</button>
+        <button class="btn btn-ghost btn-sm" onclick="adminLogout()">Sign out</button>
+      </div>
+    </div>
+
+    <div class="stat-grid" id="admin-stats"></div>
+
+    <div class="inner-nav">
+      <button class="itab active" id="it-pending" onclick="adminTab('pending')">Pending <span class="pcnt-pill" id="pcnt">0</span></button>
+      <button class="itab" id="it-addcomm"  onclick="adminTab('addcomm')">Add Commission</button>
+      <button class="itab" id="it-agents"   onclick="adminTab('agents')">Agents</button>
+      <button class="itab" id="it-all"      onclick="adminTab('all')">All Entries</button>
+    </div>
+
+    <div id="admin-alert"></div>
+
+    <!-- PENDING -->
+    <div id="itab-pending">
+      <div class="entry-list" id="pending-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+    </div>
+
+    <!-- ADD COMMISSION FOR AGENT -->
+    <div id="itab-addcomm" style="display:none">
+      <div class="card">
+        <div class="card-title">Add Commission for Agent</div>
+        <div id="admin-comm-alert"></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Use this when an agent forgets to log their own deal. It will be marked approved automatically.</div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label class="form-label">Select agent</label>
+            <select id="ac-agent"><option value="">— Choose agent —</option></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Amount ($)</label>
+            <input type="number" id="ac-amount" placeholder="e.g. 1500" min="0" step="0.01">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Note (optional)</label>
+            <input type="text" id="ac-note" placeholder="e.g. Client name, reason">
+          </div>
+        </div>
+        <button class="btn btn-gold" onclick="adminAddComm()"><span id="ac-spin" style="display:none"><span class="spinner"></span></span>Add & Approve Commission</button>
+      </div>
+    </div>
+
+    <!-- AGENTS -->
+    <div id="itab-agents" style="display:none">
+      <div class="card">
+        <div class="card-title">Add Agent</div>
+        <div id="add-agent-alert"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Full name</label><input type="text" id="na-name" placeholder="e.g. Maria Rodriguez"></div>
+          <div class="form-group"><label class="form-label">PIN (4 digits)</label><input type="text" id="na-pin" placeholder="e.g. 2847" maxlength="4"></div>
+        </div>
+        <button class="btn btn-blue" onclick="addAgent()"><span id="na-spin" style="display:none"><span class="spinner"></span></span>Add Agent</button>
+      </div>
+      <div class="section-label">Registered Agents</div>
+      <div class="entry-list" id="agents-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+    </div>
+
+    <!-- ALL ENTRIES -->
+    <div id="itab-all" style="display:none">
+      <div class="entry-list" id="all-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── SUPABASE ──
+const sb = supabase.createClient(
+  'https://sralgaskfktcynpdxjhj.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyYWxnYXNrZmt0Y3lucGR4amhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NTU3NjUsImV4cCI6MjA5ODMzMTc2NX0.XqtIEprNHOZgXbI7hvn5O1OENQeLzbx5ZmvW9gV206E'
+);
+
+// ── DATE HELPERS ──
+function startOfToday(){ const d=new Date();d.setHours(0,0,0,0);return d.toISOString(); }
+function startOfWeek(){ const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());return d.toISOString(); }
+
+// ── DB ──
+async function getAgents(){ const {data}=await sb.from('agents').select('*').order('name');return data||[]; }
+async function getAllComms(){ const {data}=await sb.from('commissions').select('*').order('created_at',{ascending:false});return data||[]; }
+async function getApprovedByPeriod(period){
+  let q=sb.from('commissions').select('*').eq('status','approved');
+  if(period==='today') q=q.gte('approved_at',startOfToday());
+  else if(period==='week') q=q.gte('approved_at',startOfWeek());
+  const {data}=await q; return data||[];
+}
+async function insertAgent(a){ const {data,error}=await sb.from('agents').insert(a).select().single();if(error)throw error;return data; }
+async function insertComm(c){ const {data,error}=await sb.from('commissions').insert(c).select().single();if(error)throw error;return data; }
+async function updateComm(id,u){ const {error}=await sb.from('commissions').update(u).eq('id',id);if(error)throw error; }
+async function deleteAgent(id){ const {error}=await sb.from('agents').delete().eq('id',id);if(error)throw error; }
+
+// ── STATE ──
+const ADMIN_USER='admin',ADMIN_PASS='Admin1234!';
+let currentAgent=null,adminAuthed=false,refreshTimer=null,currentPeriod='today',prevRankings={};
+
+function fmt(n){ return '$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function initials(n){ return n.trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2); }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function alert$(id,msg,type){ const el=document.getElementById(id);if(el)el.innerHTML=msg?`<div class="alert alert-${type}">${esc(msg)}</div>`:''; }
+function sCard(lbl,val,color){ return `<div class="stat-mini"><div class="stat-mini-lbl">${lbl}</div><div class="stat-mini-val" style="color:${color||'var(--gold)'}">${val}</div></div>`; }
+
+// ── NAVIGATION ──
+function navTo(page){
+  // guard admin page
+  if(page==='admin' && !adminAuthed){ showAdminLogin(); }
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  document.querySelectorAll('.tnav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tn-'+page).classList.add('active');
+  if(page==='scoreboard'){ loadBoard(); startRefresh(); }
+  else stopRefresh();
+  if(page==='agent' && currentAgent) loadAgentView();
+  if(page==='admin' && adminAuthed) loadAdmin();
+}
+
+function showAdminLogin(){
+  document.getElementById('admin-login-section').style.display='block';
+  document.getElementById('admin-panel-section').style.display='none';
+}
+function showAdminPanel(){
+  document.getElementById('admin-login-section').style.display='none';
+  document.getElementById('admin-panel-section').style.display='block';
+}
+
+function startRefresh(){ stopRefresh(); refreshTimer=setInterval(loadBoard,30000); }
+function stopRefresh(){ if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;} }
+
+// ── SCOREBOARD ──
+function setPeriod(p){
+  currentPeriod=p; prevRankings={};
+  ['today','week','all'].forEach(x=>document.getElementById('pb-'+x).classList.toggle('active',x===p));
+  const labels={today:'Today',week:'Week to date',all:'All time'};
+  document.getElementById('tv-period-pill').textContent=labels[p];
+  loadBoard();
+}
+
+async function loadBoard(){
+  const [agents,periodComms]=await Promise.all([getAgents(),getApprovedByPeriod(currentPeriod)]);
+  const totals={};
+  agents.forEach(a=>{totals[a.name]=0;});
+  periodComms.forEach(c=>{
+    if(totals[c.agent_name]===undefined)totals[c.agent_name]=0;
+    totals[c.agent_name]+=Number(c.amount);
+  });
+  const withComm=Object.entries(totals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const without=Object.entries(totals).filter(([,v])=>v===0).sort((a,b)=>a[0].localeCompare(b[0]));
+  const ranked=[...withComm,...without];
+  const max=withComm.length?withComm[0][1]:1;
+  const total=withComm.reduce((s,[,v])=>s+v,0);
+  let allTotals={};
+  if(currentPeriod!=='all'){
+    const {data}=await sb.from('commissions').select('agent_name,amount').eq('status','approved');
+    (data||[]).forEach(c=>{allTotals[c.agent_name]=(allTotals[c.agent_name]||0)+Number(c.amount);});
+  }
+  document.getElementById('tv-updated').textContent='Updated '+new Date().toLocaleTimeString();
+  const pLabel={today:'Today',week:'This week',all:'All time'}[currentPeriod];
+  document.getElementById('tv-stats').innerHTML=
+    `<div class="tv-stat"><div class="tsl">Agents</div><div class="tsv">${agents.length}</div></div>`+
+    `<div class="tv-stat"><div class="tsl">${pLabel} total</div><div class="tsv">${fmt(total)}</div></div>`+
+    `<div class="tv-stat"><div class="tsl">Top agent</div><div class="tsv" style="font-size:15px;color:#fff">${withComm.length?esc(withComm[0][0].split(' ')[0]):'—'}</div></div>`+
+    `<div class="tv-stat"><div class="tsl">Avg / agent</div><div class="tsv" style="color:var(--blue2)">${withComm.length?fmt(Math.round(total/withComm.length)):'$0'}</div></div>`;
+  const medals=['🥇','🥈','🥉'];
+  const newRankings={};
+  ranked.forEach(([name],i)=>{newRankings[name]=i;});
+  document.getElementById('tv-rows').innerHTML=ranked.map(([name,amt],i)=>{
+    const pct=amt>0?Math.round((amt/max)*100):0;
+    const cls=['r1','r2','r3'][i]||'';
+    const zero=amt===0?'zero-row':'';
+    const isGold=i===0&&amt>0;
+    let moveHtml='';
+    if(prevRankings[name]!==undefined&&amt>0){
+      const diff=prevRankings[name]-i;
+      if(diff>0)moveHtml=`<span class="move-up">▲${diff}</span>`;
+      else if(diff<0)moveHtml=`<span class="move-down">▼${Math.abs(diff)}</span>`;
+    }
+    const allAmt=allTotals[name]||0;
+    const showAll=currentPeriod!=='all'&&allAmt>0;
+    return `<div class="tv-row ${cls} ${zero}">
+      <div class="tv-rank">${amt>0&&i<3?medals[i]:(amt>0?i+1:'—')}</div>
+      <div>
+        <div class="tv-name">${esc(name)}${moveHtml}</div>
+        ${showAll?`<div class="tv-sub">All time: ${fmt(allAmt)}</div>`:''}
+        <div class="tv-bar-bg"><div class="tv-bar-fill ${isGold?'gbar':''}" style="width:${pct}%"></div></div>
+      </div>
+      <div class="tv-pct">${amt>0?pct+'%':'—'}</div>
+      <div class="tv-amount">${amt>0?fmt(amt):'$0'}</div>
+    </div>`;
+  }).join('')||'<div class="empty">No agents registered yet</div>';
+  prevRankings=newRankings;
+}
+
+// ── AGENT ──
+async function agentLogin(){
+  const name=document.getElementById('al-name').value.trim();
+  const pin=document.getElementById('al-pin').value.trim();
+  alert$('al-alert','','');
+  if(!name||!pin){alert$('al-alert','Enter your name and PIN.','error');return;}
+  document.getElementById('al-spin').style.display='inline';
+  const agents=await getAgents();
+  document.getElementById('al-spin').style.display='none';
+  const agent=agents.find(a=>a.name.toLowerCase()===name.toLowerCase()&&a.pin===pin);
+  if(!agent){alert$('al-alert','Name or PIN not found. Contact your admin.','error');return;}
+  currentAgent=agent;
+  document.getElementById('agent-welcome').textContent='Welcome, '+agent.name;
+  document.getElementById('agent-login-section').style.display='none';
+  document.getElementById('agent-portal-section').style.display='block';
+  loadAgentView();
+}
+function agentLogout(){
+  currentAgent=null;
+  document.getElementById('agent-login-section').style.display='block';
+  document.getElementById('agent-portal-section').style.display='none';
+  document.getElementById('al-name').value='';
+  document.getElementById('al-pin').value='';
+}
+async function loadAgentView(){
+  if(!currentAgent)return;
+  const comms=await getAllComms();
+  const mine=comms.filter(c=>c.agent_id===currentAgent.id);
+  const approved=mine.filter(c=>c.status==='approved');
+  const todayStart=new Date();todayStart.setHours(0,0,0,0);
+  const weekStart=new Date();weekStart.setHours(0,0,0,0);weekStart.setDate(weekStart.getDate()-weekStart.getDay());
+  const todayAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart).reduce((s,c)=>s+Number(c.amount),0);
+  const weekAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=weekStart).reduce((s,c)=>s+Number(c.amount),0);
+  const totalAmt=approved.reduce((s,c)=>s+Number(c.amount),0);
+  document.getElementById('agent-stats').innerHTML=
+    sCard('Today',fmt(todayAmt),'var(--gold)')+
+    sCard('This week',fmt(weekAmt),'var(--blue2)')+
+    sCard('All time',fmt(totalAmt),'#4dd68c');
+  const el=document.getElementById('agent-list');
+  if(!mine.length){el.innerHTML='<div class="empty">No submissions yet</div>';return;}
+  el.innerHTML=mine.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><span style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:3px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
+}
+async function submitComm(){
+  if(!currentAgent)return;
+  const amount=parseFloat(document.getElementById('cm-amount').value);
+  const note=document.getElementById('cm-note').value.trim();
+  alert$('submit-alert','','');
+  if(isNaN(amount)||amount<=0){alert$('submit-alert','Enter a valid dollar amount.','error');return;}
+  document.getElementById('cm-spin').style.display='inline';
+  try{
+    await insertComm({agent_id:currentAgent.id,agent_name:currentAgent.name,amount,note,status:'pending'});
+    document.getElementById('cm-amount').value='';
+    document.getElementById('cm-note').value='';
+    alert$('submit-alert','Commission submitted! Pending admin approval.','success');
+    loadAgentView();
+  }catch(e){alert$('submit-alert','Error submitting. Try again.','error');}
+  document.getElementById('cm-spin').style.display='none';
+}
+
+// ── ADMIN ──
+async function adminLogin(){
+  const user=document.getElementById('adl-user').value.trim();
+  const pass=document.getElementById('adl-pass').value;
+  alert$('adl-alert','','');
+  document.getElementById('adl-spin').style.display='inline';
+  await new Promise(r=>setTimeout(r,350));
+  document.getElementById('adl-spin').style.display='none';
+  if(user===ADMIN_USER&&pass===ADMIN_PASS){
+    adminAuthed=true;
+    showAdminPanel();
+    loadAdmin();
+  } else {
+    alert$('adl-alert','Invalid credentials.','error');
+  }
+}
+function adminLogout(){
+  adminAuthed=false;
+  showAdminLogin();
+  document.getElementById('adl-pass').value='';
+  document.getElementById('hdr-pcnt').style.display='none';
+}
+
+function adminTab(tab){
+  ['pending','addcomm','agents','all'].forEach(t=>{
+    document.getElementById('itab-'+t).style.display=t===tab?'block':'none';
+    document.getElementById('it-'+t).classList.toggle('active',t===tab);
+  });
+  if(tab==='pending') loadPending();
+  if(tab==='addcomm') loadAgentDropdown();
+  if(tab==='agents')  loadAgents();
+  if(tab==='all')     loadAll();
+}
+
+async function loadAdmin(){
+  const comms=await getAllComms();
+  const approved=comms.filter(c=>c.status==='approved');
+  const todayStart=new Date();todayStart.setHours(0,0,0,0);
+  const weekStart=new Date();weekStart.setHours(0,0,0,0);weekStart.setDate(weekStart.getDate()-weekStart.getDay());
+  const todayAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart).reduce((s,c)=>s+Number(c.amount),0);
+  const weekAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=weekStart).reduce((s,c)=>s+Number(c.amount),0);
+  const totalAmt=approved.reduce((s,c)=>s+Number(c.amount),0);
+  const pending=comms.filter(c=>c.status==='pending').length;
+  // update header badge
+  const pill=document.getElementById('hdr-pcnt');
+  pill.textContent=pending;
+  pill.style.display=pending>0?'inline':'none';
+  document.getElementById('admin-stats').innerHTML=
+    sCard('Today approved',fmt(todayAmt),'var(--gold)')+
+    sCard('Week to date',fmt(weekAmt),'var(--blue2)')+
+    sCard('All time',fmt(totalAmt),'#4dd68c')+
+    sCard('Pending',pending,pending>0?'var(--red)':'var(--muted)');
+  adminTab('pending');
+}
+
+async function loadPending(){
+  const comms=await getAllComms();
+  const pending=comms.filter(c=>c.status==='pending');
+  document.getElementById('pcnt').textContent=pending.length;
+  document.getElementById('hdr-pcnt').textContent=pending.length;
+  document.getElementById('hdr-pcnt').style.display=pending.length>0?'inline':'none';
+  const el=document.getElementById('pending-list');
+  if(!pending.length){el.innerHTML='<div class="empty">✓ All caught up — no pending commissions</div>';return;}
+  el.innerHTML=pending.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:8px"><div class="flex"><div class="avatar">${esc(initials(c.agent_name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</div><div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div></div><div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--gold)">${fmt(c.amount)}</div></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;padding-left:42px">${esc(c.note)}</div>`:''}<div style="display:flex;gap:8px;padding-left:42px"><button class="btn btn-green btn-sm" onclick="approveComm('${esc(c.id)}')">✓ Approve</button><button class="btn btn-red btn-sm" onclick="rejectComm('${esc(c.id)}')">✗ Reject</button></div></div>`).join('');
+}
+
+async function approveComm(id){
+  try{await updateComm(id,{status:'approved',approved_at:new Date().toISOString()});alert$('admin-alert','Commission approved!','success');loadAdmin();}
+  catch(e){alert$('admin-alert','Error approving.','error');}
+}
+async function rejectComm(id){
+  try{await updateComm(id,{status:'rejected'});alert$('admin-alert','Commission rejected.','error');loadPending();}
+  catch(e){alert$('admin-alert','Error rejecting.','error');}
+}
+
+async function loadAgentDropdown(){
+  const agents=await getAgents();
+  const sel=document.getElementById('ac-agent');
+  const prev=sel.value;
+  sel.innerHTML='<option value="">— Choose agent —</option>'+
+    agents.map(a=>`<option value="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}</option>`).join('');
+  if(prev)sel.value=prev;
+}
+
+async function adminAddComm(){
+  const sel=document.getElementById('ac-agent');
+  const agentId=sel.value;
+  const agentName=sel.options[sel.selectedIndex]?.dataset?.name||'';
+  const amount=parseFloat(document.getElementById('ac-amount').value);
+  const note=document.getElementById('ac-note').value.trim();
+  alert$('admin-comm-alert','','');
+  if(!agentId){alert$('admin-comm-alert','Please select an agent.','error');return;}
+  if(isNaN(amount)||amount<=0){alert$('admin-comm-alert','Please enter a valid amount.','error');return;}
+  document.getElementById('ac-spin').style.display='inline';
+  try{
+    await insertComm({agent_id:agentId,agent_name:agentName,amount,note:note?'[Admin entry] '+note:'[Admin entry]',status:'approved',approved_at:new Date().toISOString()});
+    document.getElementById('ac-amount').value='';
+    document.getElementById('ac-note').value='';
+    sel.value='';
+    alert$('admin-comm-alert',agentName+' — '+fmt(amount)+' added and approved!','success');
+    loadAdmin();
+  }catch(e){alert$('admin-comm-alert','Error adding commission.','error');}
+  document.getElementById('ac-spin').style.display='none';
+}
+
+async function loadAgents(){
+  const agents=await getAgents();
+  const el=document.getElementById('agents-list');
+  if(!agents.length){el.innerHTML='<div class="empty">No agents yet — add one above</div>';return;}
+  el.innerHTML=agents.map(a=>`<div class="entry-row flex-between"><div class="flex"><div class="avatar">${esc(initials(a.name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(a.name)}</div><div style="font-size:11px;color:var(--muted)">PIN: ${esc(a.pin)} · Added ${new Date(a.created_at).toLocaleDateString()}</div></div></div><button class="btn btn-ghost btn-sm" style="border-color:var(--red);color:var(--red)" onclick="removeAgent('${esc(a.id)}')">Remove</button></div>`).join('');
+}
+
+async function addAgent(){
+  const name=document.getElementById('na-name').value.trim();
+  const pin=document.getElementById('na-pin').value.trim();
+  alert$('add-agent-alert','','');
+  if(!name){alert$('add-agent-alert','Enter the agent name.','error');return;}
+  if(!/^\d{4}$/.test(pin)){alert$('add-agent-alert','PIN must be exactly 4 digits.','error');return;}
+  document.getElementById('na-spin').style.display='inline';
+  try{
+    await insertAgent({name,pin});
+    document.getElementById('na-name').value='';
+    document.getElementById('na-pin').value='';
+    alert$('add-agent-alert',name+' added successfully!','success');
+    loadAgents();
+  }catch(e){alert$('add-agent-alert',e.message||'Error adding agent.','error');}
+  document.getElementById('na-spin').style.display='none';
+}
+
+async function removeAgent(id){
+  if(!confirm('Remove this agent and all their records?'))return;
+  try{await deleteAgent(id);loadAgents();}
+  catch(e){alert$('add-agent-alert','Error removing.','error');}
+}
+
+async function loadAll(){
+  const comms=await getAllComms();
+  const el=document.getElementById('all-list');
+  if(!comms.length){el.innerHTML='<div class="empty">No entries yet</div>';return;}
+  el.innerHTML=comms.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><div class="flex"><div class="avatar" style="width:28px;height:28px;font-size:10px">${esc(initials(c.agent_name))}</div><span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</span></div><div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span></div></div>${c.note?`<div style="font-size:12px;color:var(--muted);padding-left:36px;margin-bottom:2px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted);padding-left:36px">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
+}
+
+// ── KEYBOARD ──
+document.getElementById('al-pin').addEventListener('keydown',e=>{if(e.key==='Enter')agentLogin();});
+document.getElementById('adl-pass').addEventListener('keydown',e=>{if(e.key==='Enter')adminLogin();});
+
+// ── INIT ──
+loadBoard();
+startRefresh();
+// poll pending count every 60s even when on other tabs
+setInterval(async()=>{
+  if(!adminAuthed)return;
+  const comms=await getAllComms();
+  const n=comms.filter(c=>c.status==='pending').length;
+  const pill=document.getElementById('hdr-pcnt');
+  pill.textContent=n;
+  pill.style.display=n>0?'inline':'none';
+},60000);
+</script>
+</body>
+</html>
