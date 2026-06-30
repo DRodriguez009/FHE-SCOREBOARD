@@ -29,9 +29,9 @@ body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);m
 
 /* ── ANNOUNCEMENT BANNER ── */
 .announce-bar{background:var(--orange);overflow:hidden;height:0;transition:height .3s}
-.announce-bar.visible{height:36px}
-.announce-inner{display:flex;align-items:center;height:36px;white-space:nowrap}
-.announce-text{display:inline-block;animation:marquee 20s linear infinite;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:1px;text-transform:uppercase;padding-left:100%;color:#fff}
+.announce-bar.visible{height:52px}
+.announce-inner{display:flex;align-items:center;height:52px;white-space:nowrap}
+.announce-text{display:inline-block;animation:marquee 20s linear infinite;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:20px;letter-spacing:1.5px;text-transform:uppercase;padding-left:100%;color:#fff}
 @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
 
 /* ── HEADER ── */
@@ -1457,7 +1457,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();con
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents see a "refresh now" banner
 // instead of getting silently served stale code.
-const APP_VERSION='2026-06-30-011';
+const APP_VERSION='2026-06-30-012';
 let updateBannerShown=false;
 async function checkForUpdate(){
   if(updateBannerShown)return;
