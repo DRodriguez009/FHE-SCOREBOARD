@@ -816,13 +816,23 @@ async function loadAgentView(){
   const comms=await getAllComms(),mine=comms.filter(c=>c.agent_id===currentAgent.id),approved=mine.filter(c=>c.status==='approved');
   const todayStart=new Date();todayStart.setHours(0,0,0,0);
   const weekStart=new Date();weekStart.setHours(0,0,0,0);weekStart.setDate(weekStart.getDate()-weekStart.getDay());
-  const todayAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart).reduce((s,c)=>s+Number(c.amount),0);
-  const weekAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=weekStart).reduce((s,c)=>s+Number(c.amount),0);
+  const todayApproved=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart);
+  const weekApproved=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=weekStart);
+  const todayAmt=todayApproved.reduce((s,c)=>s+Number(c.amount),0);
+  const todayCount=todayApproved.length;
+  const weekAmt=weekApproved.reduce((s,c)=>s+Number(c.amount),0);
+  const weekCount=weekApproved.length;
   const totalAmt=approved.reduce((s,c)=>s+Number(c.amount),0);
   const{bestDay,bestWeek}=calcPersonalBest(comms,currentAgent.id);
   const streak=calcStreak(comms,currentAgent.id);
   document.getElementById('agent-pb').innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:.5rem">${bestDay>0?`<div class="pb-badge">🏅 Best day: ${fmt(bestDay)}</div>`:''} ${bestWeek>0?`<div class="pb-badge">🏆 Best week: ${fmt(bestWeek)}</div>`:''} ${streak>=2?`<div class="pb-badge">🔥 ${streak}-day streak</div>`:''}</div>`;
-  document.getElementById('agent-stats').innerHTML=sCard('Today',fmt(todayAmt),'var(--orange)')+sCard('This week',fmt(weekAmt),'var(--gold)')+sCard('All time',fmt(totalAmt),'var(--green3)')+sCard('Total sales',approved.length,'var(--gold)');
+  const todaySaleLabel=todayCount===1?'sale':'sales';
+  const weekSaleLabel=weekCount===1?'sale':'sales';
+  document.getElementById('agent-stats').innerHTML=
+    sCard('Today',fmt(todayAmt)+` <span style="font-size:12px;color:var(--muted);font-weight:600">(${todayCount} ${todaySaleLabel})</span>`,'var(--orange)')+
+    sCard('This week',fmt(weekAmt)+` <span style="font-size:12px;color:var(--muted);font-weight:600">(${weekCount} ${weekSaleLabel})</span>`,'var(--gold)')+
+    sCard('All time',fmt(totalAmt),'var(--green3)')+
+    sCard('Total sales',approved.length,'var(--gold)');
   const el=document.getElementById('agent-list');
   if(!mine.length){el.innerHTML='<div class="empty">No submissions yet</div>';return;}
   el.innerHTML=mine.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><span style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:3px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
@@ -1441,7 +1451,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();con
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents see a "refresh now" banner
 // instead of getting silently served stale code.
-const APP_VERSION='2026-06-30-005';
+const APP_VERSION='2026-06-30-006';
 let updateBannerShown=false;
 async function checkForUpdate(){
   if(updateBannerShown)return;
