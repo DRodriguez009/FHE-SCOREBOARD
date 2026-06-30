@@ -1019,7 +1019,7 @@ async function loadOpenLines(){
     <div class="flex-between" style="margin-bottom:6px">
       <div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(line.title)}</div>
-        <div style="font-size:11px;color:var(--muted)">${lineLabel(line)} · Settles on ${line.period==='week'?'week-to-date':'today\\'s'} commission</div>
+        <div style="font-size:11px;color:var(--muted)">${lineLabel(line)} · Settles on ${line.period==='week'?"week-to-date":"today's"} commission</div>
       </div>
       <span class="badge badge-pending">OPEN</span>
     </div>
@@ -1051,7 +1051,7 @@ async function confirmBet(){
   if(isNaN(amount)||amount<=0){alert('Enter a valid bet amount.');return;}
   const wallet=await getBettorWallet(sbCurrentBettor);
   const coins=wallet?Number(wallet.coins)||0:0;
-  if(amount>coins){alert('You don\\'t have enough Mike Coins for that bet.');return;}
+  if(amount>coins){alert("You don't have enough Mike Coins for that bet.");return;}
   const maxBet=Math.floor(coins*MAX_BET_PCT);
   if(amount>maxBet){alert(`Max bet is 50% of your balance: ${maxBet} Mike Coins.`);return;}
   const{data:line}=await sb.from('bet_lines').select('*').eq('id',lineId).single();
@@ -1441,7 +1441,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();con
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents see a "refresh now" banner
 // instead of getting silently served stale code.
-const APP_VERSION='2026-06-30-004';
+const APP_VERSION='2026-06-30-005';
 let updateBannerShown=false;
 async function checkForUpdate(){
   if(updateBannerShown)return;
