@@ -67,6 +67,23 @@ body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);m
 
 /* ── TV BOARD ── */
 .tv-wrap{background:#020802;border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:1rem}
+
+/* ── LIGHT MODE (TV display only, for bright rooms) ── */
+.tv-wrap.light-mode{background:#fdfff9;border-color:#cdd9c5}
+.tv-wrap.light-mode .tv-hdr{background:linear-gradient(135deg,#f0fff0,#fafff5);border-bottom-color:var(--orange)}
+.tv-wrap.light-mode .tv-hdr h2{color:var(--green)}
+.tv-wrap.light-mode .tv-updated{color:#5a7a5a}
+.tv-wrap.light-mode .tv-stats{border-bottom-color:#cdd9c5}
+.tv-wrap.light-mode .tv-stat{border-right-color:#cdd9c5}
+.tv-wrap.light-mode .tsl{color:#5a7a5a}
+.tv-wrap.light-mode .tv-row{border-bottom-color:#e2ecd8}
+.tv-wrap.light-mode .tv-name{color:#0a200a}
+.tv-wrap.light-mode .tv-sub{color:#5a7a5a}
+.tv-wrap.light-mode .tv-amount{color:#0a200a}
+.tv-wrap.light-mode .tv-pct{color:#5a7a5a}
+.tv-wrap.light-mode .tv-bar-bg{background:#e2ecd8}
+.tv-wrap.light-mode .tv-rank{color:#5a7a5a}
+
 .tv-hdr{background:linear-gradient(135deg,#061206,#030a03);border-bottom:3px solid var(--orange);padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
 .eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--orange);margin-bottom:4px;font-weight:700}
 .tv-hdr h2{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:30px;text-transform:uppercase;letter-spacing:2px;color:#fff}
@@ -246,9 +263,12 @@ select option{background:#020802}
       <button class="period-btn" id="pb-week" onclick="setPeriod('week')">Week to date</button>
       <button class="period-btn" id="pb-all" onclick="setPeriod('all')">All time</button>
     </div>
-    <button class="btn btn-ghost btn-sm" onclick="loadBoard()">↻ Refresh</button>
+    <div class="flex" style="gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="toggleTheme()" id="theme-toggle-btn">🌙 Dark mode</button>
+      <button class="btn btn-ghost btn-sm" onclick="loadBoard()">↻ Refresh</button>
+    </div>
   </div>
-  <div class="tv-wrap">
+  <div class="tv-wrap" id="tv-wrap">
     <div class="tv-hdr">
       <div>
         <div class="eyebrow">First Health Enrollment</div>
@@ -371,7 +391,14 @@ select option{background:#020802}
       <button class="itab" id="it-all" onclick="adminTab('all')">All Entries</button>
     </div>
     <div id="admin-alert"></div>
-    <div id="itab-pending"><div class="entry-list" id="pending-list"><div class="empty"><span class="spinner"></span> Loading...</div></div></div>
+    <div id="itab-pending">
+      <div id="bulk-bar" style="display:none;align-items:center;gap:10px;margin-bottom:10px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px">
+        <span id="bulk-count" style="font-size:12px;color:var(--muted)">0 selected</span>
+        <button class="btn btn-green btn-sm" onclick="bulkApprove()">✓ Approve selected</button>
+        <button class="btn btn-ghost btn-sm" onclick="bulkClear()">Clear</button>
+      </div>
+      <div class="entry-list" id="pending-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+    </div>
     <div id="itab-addcomm" style="display:none">
       <div class="card">
         <div class="card-title">Add Commission for Agent</div>
@@ -399,6 +426,9 @@ select option{background:#020802}
       <div class="entry-list" id="agents-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
     </div>
     <div id="itab-all" style="display:none">
+      <div class="form-group" style="margin-bottom:.75rem">
+        <input type="text" id="all-search" placeholder="🔍 Search by agent name..." oninput="filterAllEntries()">
+      </div>
       <div class="entry-list" id="all-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
     </div>
   </div>
@@ -477,8 +507,47 @@ function navTo(page){
 function startRefresh(){stopRefresh();refreshTimer=setInterval(loadBoard,30000);}
 function stopRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}}
 
+// ── LIGHT/DARK TOGGLE (TV display) ──
+function toggleTheme(){
+  const wrap=document.getElementById('tv-wrap');
+  const btn=document.getElementById('theme-toggle-btn');
+  const isLight=wrap.classList.toggle('light-mode');
+  btn.textContent=isLight?'☀️ Light mode':'🌙 Dark mode';
+  localStorage.setItem('fhe_theme',isLight?'light':'dark');
+}
+if(localStorage.getItem('fhe_theme')==='light'){
+  const wrap=document.getElementById('tv-wrap');
+  const btn=document.getElementById('theme-toggle-btn');
+  if(wrap)wrap.classList.add('light-mode');
+  if(btn)btn.textContent='☀️ Light mode';
+}
+
+// ── CHIME SOUND on new #1 ──
+let audioCtx=null;
+function playChime(){
+  try{
+    if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const now=audioCtx.currentTime;
+    const notes=[523.25,659.25,783.99]; // C5, E5, G5 — short pleasant triad
+    notes.forEach((freq,i)=>{
+      const osc=audioCtx.createOscillator();
+      const gain=audioCtx.createGain();
+      osc.type='sine';
+      osc.frequency.value=freq;
+      const start=now+i*0.09;
+      gain.gain.setValueAtTime(0,start);
+      gain.gain.linearRampToValueAtTime(0.18,start+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001,start+0.5);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(start);
+      osc.stop(start+0.55);
+    });
+  }catch(e){/* audio not available, ignore */}
+}
+
 // ── CONFETTI ──
 function fireConfetti(){
+  playChime();
   const canvas=document.getElementById('confetti-canvas');
   canvas.classList.add('active');
   const ctx=canvas.getContext('2d');
@@ -703,14 +772,44 @@ async function loadAdmin(){
   adminTab('pending');
 }
 
+let selectedPendingIds=new Set();
+
 async function loadPending(){
   const comms=await getAllComms(),pending=comms.filter(c=>c.status==='pending');
   document.getElementById('pcnt').textContent=pending.length;
   document.getElementById('hdr-pcnt').textContent=pending.length;
   document.getElementById('hdr-pcnt').style.display=pending.length>0?'inline':'none';
+  selectedPendingIds.clear();
+  updateBulkBar();
   const el=document.getElementById('pending-list');
   if(!pending.length){el.innerHTML='<div class="empty">✓ All caught up — no pending commissions</div>';return;}
-  el.innerHTML=pending.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:8px"><div class="flex"><div class="avatar">${esc(initials(c.agent_name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</div><div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div></div><div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--orange)">${fmt(c.amount)}</div></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;padding-left:42px">${esc(c.note)}</div>`:''}<div style="display:flex;gap:8px;padding-left:42px;flex-wrap:wrap"><button class="btn btn-green btn-sm" onclick="approveComm('${esc(c.id)}')">✓ Approve</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="rejectComm('${esc(c.id)}')">✗ Reject</button><button class="btn btn-ghost btn-sm" onclick="openEdit('${esc(c.id)}','${esc(c.amount)}','${esc(c.note||'')}')">✏️ Edit</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="deleteComm('${esc(c.id)}','pending')">🗑 Delete</button></div></div>`).join('');
+  el.innerHTML=pending.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:8px"><div class="flex"><input type="checkbox" class="bulk-check" data-id="${esc(c.id)}" onchange="toggleBulk('${esc(c.id)}',this.checked)" style="width:18px;height:18px;accent-color:var(--orange);cursor:pointer"><div class="avatar">${esc(initials(c.agent_name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</div><div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div></div><div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--orange)">${fmt(c.amount)}</div></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;padding-left:42px">${esc(c.note)}</div>`:''}<div style="display:flex;gap:8px;padding-left:42px;flex-wrap:wrap"><button class="btn btn-green btn-sm" onclick="approveComm('${esc(c.id)}')">✓ Approve</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="rejectComm('${esc(c.id)}')">✗ Reject</button><button class="btn btn-ghost btn-sm" onclick="openEdit('${esc(c.id)}','${esc(c.amount)}','${esc(c.note||'')}')">✏️ Edit</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="deleteComm('${esc(c.id)}','pending')">🗑 Delete</button></div></div>`).join('');
+}
+
+function toggleBulk(id,checked){
+  if(checked)selectedPendingIds.add(id);else selectedPendingIds.delete(id);
+  updateBulkBar();
+}
+function updateBulkBar(){
+  const bar=document.getElementById('bulk-bar');
+  const n=selectedPendingIds.size;
+  document.getElementById('bulk-count').textContent=n+' selected';
+  bar.style.display=n>0?'flex':'none';
+}
+function bulkClear(){
+  selectedPendingIds.clear();
+  document.querySelectorAll('.bulk-check').forEach(cb=>cb.checked=false);
+  updateBulkBar();
+}
+async function bulkApprove(){
+  if(!selectedPendingIds.size)return;
+  if(!confirm(`Approve ${selectedPendingIds.size} selected commission(s)?`))return;
+  const ids=[...selectedPendingIds];
+  try{
+    await Promise.all(ids.map(id=>updateComm(id,{status:'approved',approved_at:new Date().toISOString()})));
+    alert$('admin-alert',`${ids.length} commission(s) approved!`,'success');
+    loadAdmin();
+  }catch(e){alert$('admin-alert','Error approving some commissions.','error');}
 }
 
 async function approveComm(id){try{await updateComm(id,{status:'approved',approved_at:new Date().toISOString()});alert$('admin-alert','Commission approved!','success');loadAdmin();}catch(e){alert$('admin-alert','Error approving.','error');}}
@@ -766,10 +865,27 @@ async function addAgent(){
 
 async function removeAgent(id){if(!confirm('Remove this agent?'))return;try{await deleteAgent(id);loadAgents();}catch(e){alert$('add-agent-alert','Error removing.','error');}}
 
-async function loadAll(){
-  const comms=await getAllComms(),el=document.getElementById('all-list');
-  if(!comms.length){el.innerHTML='<div class="empty">No entries yet</div>';return;}
+let allCommsCache=[];
+
+function renderAllEntries(comms){
+  const el=document.getElementById('all-list');
+  if(!comms.length){el.innerHTML='<div class="empty">No matching entries</div>';return;}
   el.innerHTML=comms.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><div class="flex"><div class="avatar" style="width:28px;height:28px;font-size:10px">${esc(initials(c.agent_name))}</div><span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</span></div><div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span><button class="btn btn-ghost btn-sm" onclick="openEdit('${esc(c.id)}','${esc(c.amount)}','${esc(c.note||'')}')" style="padding:3px 8px;font-size:11px">✏️</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070;padding:3px 8px;font-size:11px" onclick="deleteComm('${esc(c.id)}','all')">🗑</button></div></div>${c.note?`<div style="font-size:12px;color:var(--muted);padding-left:36px;margin-bottom:2px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted);padding-left:36px">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
+}
+
+async function loadAll(){
+  allCommsCache=await getAllComms();
+  const search=document.getElementById('all-search');
+  if(search)search.value='';
+  if(!allCommsCache.length){document.getElementById('all-list').innerHTML='<div class="empty">No entries yet</div>';return;}
+  renderAllEntries(allCommsCache);
+}
+
+function filterAllEntries(){
+  const q=document.getElementById('all-search').value.trim().toLowerCase();
+  if(!q){renderAllEntries(allCommsCache);return;}
+  const filtered=allCommsCache.filter(c=>c.agent_name.toLowerCase().includes(q));
+  renderAllEntries(filtered);
 }
 
 document.getElementById('edit-modal').addEventListener('click',function(e){if(e.target===this)closeEdit();});
@@ -783,7 +899,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();con
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents see a "refresh now" banner
 // instead of getting silently served stale code.
-const APP_VERSION='2026-06-30-001';
+const APP_VERSION='2026-06-30-002';
 let updateBannerShown=false;
 async function checkForUpdate(){
   if(updateBannerShown)return;
