@@ -188,6 +188,15 @@ select option{background:#020802}
 .modal{background:var(--dark);border:1px solid var(--border);border-top:3px solid var(--orange);border-radius:var(--rl);padding:1.5rem;width:100%;max-width:440px}
 .modal-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:20px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:1.25rem}
 
+/* ── UPDATE OVERLAY (full screen, blocks interaction until refresh) ── */
+#update-overlay{display:none;position:fixed;inset:0;background:rgba(2,8,2,.93);z-index:9000;align-items:center;justify-content:center;padding:1.5rem;backdrop-filter:blur(3px)}
+#update-overlay.open{display:flex}
+.update-overlay-card{background:var(--dark);border:2px solid var(--orange);border-radius:var(--rl);padding:2.5rem 2rem;max-width:420px;width:100%;text-align:center;box-shadow:0 0 60px rgba(244,115,33,.25)}
+.update-overlay-icon{font-size:42px;margin-bottom:1rem;animation:spin-slow 2s linear infinite}
+@keyframes spin-slow{to{transform:rotate(360deg)}}
+.update-overlay-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:24px;text-transform:uppercase;letter-spacing:1px;color:#fff;margin-bottom:.75rem}
+.update-overlay-sub{font-size:14px;color:var(--muted);margin-bottom:1.5rem;line-height:1.5}
+
 /* ── ADMIN INNER TABS ── */
 .inner-nav{display:flex;border-bottom:1px solid var(--border);margin-bottom:1.25rem;flex-wrap:wrap}
 .itab{padding:9px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
@@ -248,10 +257,14 @@ select option{background:#020802}
   </div>
 </header>
 
-<!-- UPDATE AVAILABLE BANNER -->
-<div id="update-banner" style="display:none;background:var(--gold);color:#1a1200;padding:10px 1.5rem;align-items:center;justify-content:center;gap:12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:.5px;text-transform:uppercase">
-  <span>🔄 A new version of the scoreboard is available</span>
-  <button class="btn btn-orange btn-sm" onclick="location.reload()">Refresh now</button>
+<!-- UPDATE AVAILABLE — FULL SCREEN OVERLAY -->
+<div id="update-overlay">
+  <div class="update-overlay-card">
+    <div class="update-overlay-icon">🔄</div>
+    <div class="update-overlay-title">New Version Available</div>
+    <div class="update-overlay-sub">The scoreboard has been updated. Refresh now to see the latest changes.</div>
+    <button class="btn btn-orange btn-full" style="font-size:16px;padding:14px 24px" onclick="location.reload()">Refresh Now</button>
+  </div>
 </div>
 
 <!-- TOP NAV -->
@@ -1455,24 +1468,28 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();con
 
 // ── UPDATE-AVAILABLE CHECK ──
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
-// is deployed with a different value here, agents see a "refresh now" banner
-// instead of getting silently served stale code.
-const APP_VERSION='2026-06-30-012';
-let updateBannerShown=false;
+// is deployed with a different value here, agents are blocked with a full-screen
+// "refresh now" overlay instead of silently running stale code.
+const APP_VERSION='2026-06-30-013';
+let updateOverlayShown=false;
 async function checkForUpdate(){
-  if(updateBannerShown)return;
+  if(updateOverlayShown)return;
   try{
     const res=await fetch(window.location.pathname+'?_v='+Date.now(),{cache:'no-store'});
     const html=await res.text();
     const match=html.match(/APP_VERSION=['"]([^'"]+)['"]/);
     if(match&&match[1]&&match[1]!==APP_VERSION){
-      updateBannerShown=true;
-      const banner=document.getElementById('update-banner');
-      banner.style.display='flex';
+      updateOverlayShown=true;
+      document.getElementById('update-overlay').classList.add('open');
     }
   }catch(e){/* network hiccup, ignore */}
 }
-setInterval(checkForUpdate,90000);
+// Poll every 20s while the tab is open
+setInterval(checkForUpdate,20000);
+// Also check immediately whenever the tab regains focus or becomes visible —
+// catches agents who only glance at the page occasionally instead of leaving it open
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkForUpdate();});
+window.addEventListener('focus',checkForUpdate);
 </script>
 </body>
 </html>
