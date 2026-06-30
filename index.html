@@ -608,7 +608,7 @@ async function loadPending(){
   document.getElementById('hdr-pcnt').style.display=pending.length>0?'inline':'none';
   const el=document.getElementById('pending-list');
   if(!pending.length){el.innerHTML='<div class="empty">✓ All caught up — no pending commissions</div>';return;}
-  el.innerHTML=pending.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:8px"><div class="flex"><div class="avatar">${esc(initials(c.agent_name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</div><div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div></div><div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--gold)">${fmt(c.amount)}</div></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;padding-left:42px">${esc(c.note)}</div>`:''}<div style="display:flex;gap:8px;padding-left:42px"><button class="btn btn-green btn-sm" onclick="approveComm('${esc(c.id)}')">✓ Approve</button><button class="btn btn-red btn-sm" onclick="rejectComm('${esc(c.id)}')">✗ Reject</button></div></div>`).join('');
+  el.innerHTML=pending.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:8px"><div class="flex"><div class="avatar">${esc(initials(c.agent_name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</div><div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div></div><div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--gold)">${fmt(c.amount)}</div></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;padding-left:42px">${esc(c.note)}</div>`:''}<div style="display:flex;gap:8px;padding-left:42px"><button class="btn btn-green btn-sm" onclick="approveComm('${esc(c.id)}')">✓ Approve</button><button class="btn btn-red btn-sm" onclick="rejectComm('${esc(c.id)}')">✗ Reject</button><button class="btn btn-ghost btn-sm" style="border-color:var(--red);color:var(--red)" onclick="deleteComm('${esc(c.id)}','pending')">🗑 Delete</button></div></div>`).join('');
 }
 
 async function approveComm(id){
@@ -684,7 +684,18 @@ async function loadAll(){
   const comms=await getAllComms();
   const el=document.getElementById('all-list');
   if(!comms.length){el.innerHTML='<div class="empty">No entries yet</div>';return;}
-  el.innerHTML=comms.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><div class="flex"><div class="avatar" style="width:28px;height:28px;font-size:10px">${esc(initials(c.agent_name))}</div><span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</span></div><div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span></div></div>${c.note?`<div style="font-size:12px;color:var(--muted);padding-left:36px;margin-bottom:2px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted);padding-left:36px">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
+  el.innerHTML=comms.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><div class="flex"><div class="avatar" style="width:28px;height:28px;font-size:10px">${esc(initials(c.agent_name))}</div><span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</span></div><div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span><button class="btn btn-ghost btn-sm" style="border-color:var(--red);color:var(--red);padding:3px 8px;font-size:11px" onclick="deleteComm('${esc(c.id)}','all')">🗑</button></div></div>${c.note?`<div style="font-size:12px;color:var(--muted);padding-left:36px;margin-bottom:2px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted);padding-left:36px">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
+}
+
+async function deleteComm(id, source){
+  if(!confirm('Delete this commission entry permanently?'))return;
+  try{
+    const {error}=await sb.from('commissions').delete().eq('id',id);
+    if(error)throw error;
+    alert$('admin-alert','Commission deleted.','success');
+    if(source==='pending') loadAdmin();
+    else loadAll();
+  }catch(e){alert$('admin-alert','Error deleting commission.','error');}
 }
 
 // ── KEYBOARD ──
@@ -705,4 +716,4 @@ setInterval(async()=>{
 },60000);
 </script>
 </body>
-</html> 
+</html>
