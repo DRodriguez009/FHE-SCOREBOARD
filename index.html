@@ -777,10 +777,10 @@ async function loadBoard(){
   const pLabel={today:'Today',week:'This week',all:'All time'}[currentPeriod];
   document.getElementById('tv-stats').innerHTML=
     `<div class="tv-stat"><div class="tsl">Agents</div><div class="tsv">${agents.length}</div></div>`+
+    `<div class="tv-stat"><div class="tsl">${pLabel} total</div><div class="tsv">${fmt(total)}</div></div>`+
     `<div class="tv-stat"><div class="tsl">${pLabel} sales</div><div class="tsv">${totalSales}</div></div>`+
     `<div class="tv-stat"><div class="tsl">Top agent</div><div class="tsv" style="font-size:15px;color:#fff">${withComm.length?esc(withComm[0][0].split(' ')[0]):'—'}</div></div>`+
-    `<div class="tv-stat"><div class="tsl">Avg / agent</div><div class="tsv" style="color:var(--green3)">${withComm.length?fmt(Math.round(total/withComm.length)):'$0'}</div></div>`+
-    `<div class="tv-stat"><div class="tsl">${pLabel} total</div><div class="tsv">${fmt(total)}</div></div>`;
+    `<div class="tv-stat"><div class="tsl">Avg / agent</div><div class="tsv" style="color:var(--green3)">${withComm.length?fmt(Math.round(total/withComm.length)):'$0'}</div></div>`;
   const medals=['🥇','🥈','🥉'];
   const newRankings={};ranked.forEach(([name],i)=>{newRankings[name]=i;});
   document.getElementById('tv-rows').innerHTML=ranked.map(([name,amt],i)=>{
@@ -1457,7 +1457,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();con
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents see a "refresh now" banner
 // instead of getting silently served stale code.
-const APP_VERSION='2026-06-30-008';
+const APP_VERSION='2026-06-30-009';
 let updateBannerShown=false;
 async function checkForUpdate(){
   if(updateBannerShown)return;
