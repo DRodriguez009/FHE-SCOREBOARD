@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>First Health Enrollment — Commission Scoreboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --black:#030a03;--dark:#061206;--card:#0a1a0a;--card2:#0f1f0f;
+  --border:#1a3a1a;--border2:#2a4a2a;
+  --green:#005030;--green2:#00703c;--green3:#00a050;
+  --orange:#f47321;--orange2:#ff8c3a;--orange-bg:#1a0800;
+  --white:#f5fff5;--text:#efffef;--muted:#7aaa7a;--muted2:#5a8a5a;
+  --gold:#f0c040;--gold2:#ffe060;
+  --red:#cc2200;
+  --r:5px;--rl:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+/* ── SEBASTIAN BACKGROUND ── */
+.sebastian-bg{
+  position:fixed;bottom:0;right:-20px;width:420px;height:520px;
+  opacity:.07;pointer-events:none;z-index:0;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 380'%3E%3C!-- Body --%3E%3Cellipse cx='150' cy='220' rx='80' ry='110' fill='%23ffffff'/%3E%3C!-- Head --%3E%3Ccircle cx='150' cy='105' r='55' fill='%23ffffff'/%3E%3C!-- Eye --%3E%3Ccircle cx='168' cy='95' r='10' fill='%23000000'/%3E%3Ccircle cx='171' cy='92' r='4' fill='%23ffffff'/%3E%3C!-- Beak long --%3E%3Cellipse cx='200' cy='108' rx='38' ry='10' fill='%23f47321' transform='rotate(-15 200 108)'/%3E%3Cellipse cx='225' cy='100' rx='18' ry='7' fill='%23f47321' transform='rotate(-20 225 100)'/%3E%3C!-- Beak tip curl --%3E%3Cellipse cx='238' cy='96' rx='10' ry='12' fill='%23f47321' transform='rotate(30 238 96)'/%3E%3C!-- Wings --%3E%3Cellipse cx='75' cy='210' rx='45' ry='80' fill='%23e8e8e8' transform='rotate(-20 75 210)'/%3E%3Cellipse cx='225' cy='210' rx='45' ry='80' fill='%23e8e8e8' transform='rotate(20 225 210)'/%3E%3C!-- UM Logo on chest --%3E%3Ctext x='150' y='230' font-family='Arial Black' font-size='36' font-weight='900' fill='%23f47321' text-anchor='middle'%3EUM%3C/text%3E%3C!-- Legs --%3E%3Crect x='125' y='320' width='14' height='55' rx='5' fill='%23f47321'/%3E%3Crect x='161' y='320' width='14' height='55' rx='5' fill='%23f47321'/%3E%3C!-- Feet --%3E%3Cellipse cx='132' cy='375' rx='22' ry='7' fill='%23f47321'/%3E%3Cellipse cx='168' cy='375' rx='22' ry='7' fill='%23f47321'/%3E%3C!-- Cap --%3E%3Cellipse cx='150' cy='60' rx='60' ry='12' fill='%23005030'/%3E%3Crect x='95' y='30' width='110' height='35' rx='5' fill='%23005030'/%3E%3Crect x='85' y='58' width='20' height='8' rx='3' fill='%23005030'/%3E%3Ctext x='150' y='55' font-family='Arial Black' font-size='18' font-weight='900' fill='%23f47321' text-anchor='middle'%3EUM%3C/text%3E%3C/svg%3E") no-repeat bottom center;
+  background-size:contain;
+}
+
+/* ── CONFETTI ── */
+#confetti-canvas{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;opacity:0;transition:opacity .5s}
+#confetti-canvas.active{opacity:1}
+
+/* ── ANNOUNCEMENT BANNER ── */
+.announce-bar{background:var(--orange);overflow:hidden;height:0;transition:height .3s}
+.announce-bar.visible{height:36px}
+.announce-inner{display:flex;align-items:center;height:36px;white-space:nowrap}
+.announce-text{display:inline-block;animation:marquee 20s linear infinite;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:1px;text-transform:uppercase;padding-left:100%;color:#fff}
+@keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
+
+/* ── HEADER ── */
+.hdr{background:var(--dark);border-bottom:3px solid var(--orange);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:62px;position:sticky;top:0;z-index:200;position:relative}
+.hdr::before{content:'THE U';position:absolute;right:1.5rem;top:50%;transform:translateY(-50%);font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:48px;color:var(--orange);opacity:.06;pointer-events:none;letter-spacing:-2px}
+.logo{display:flex;align-items:center;gap:12px;cursor:pointer;position:relative;z-index:1}
+.logo-box{width:40px;height:40px;background:var(--green);border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:19px;color:var(--orange);border:2px solid var(--orange);flex-shrink:0}
+.logo-text .l1{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:17px;text-transform:uppercase;letter-spacing:.5px;line-height:1.1;color:#fff}
+.logo-text .l2{font-size:10px;color:var(--orange);text-transform:uppercase;letter-spacing:2px;font-weight:600}
+.hdr-right{display:flex;align-items:center;gap:8px;position:relative;z-index:1}
+.live-badge{background:var(--orange);color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:5px}
+.live-dot{width:6px;height:6px;background:#fff;border-radius:50%;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── TOP NAV ── */
+.top-nav{background:var(--dark);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 1.5rem;position:sticky;top:62px;z-index:100}
+.tnav-btn{padding:14px 20px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s;white-space:nowrap}
+.tnav-btn:hover{color:var(--text)}
+.tnav-btn.active{color:var(--orange);border-bottom-color:var(--orange)}
+.tnav-btn.admin-btn{margin-left:auto}
+.pcnt-pill{background:var(--orange);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:5px}
+
+/* ── PAGES ── */
+.page{display:none;padding:1.5rem;max-width:960px;margin:0 auto;position:relative;z-index:1}
+.page.active{display:block}
+
+/* ── PERIOD BAR ── */
+.period-bar{display:flex;background:#020802;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;width:fit-content}
+.period-btn{padding:7px 18px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);border:none;background:none;cursor:pointer;transition:background .15s,color .15s;border-right:1px solid var(--border)}
+.period-btn:last-child{border-right:none}
+.period-btn:hover{color:var(--text);background:#0a180a}
+.period-btn.active{background:var(--green);color:var(--orange)}
+
+/* ── TV BOARD ── */
+.tv-wrap{background:#020802;border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:1rem}
+.tv-hdr{background:linear-gradient(135deg,#061206,#030a03);border-bottom:3px solid var(--orange);padding:1.25rem 1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:2px;color:var(--orange);margin-bottom:4px;font-weight:700}
+.tv-hdr h2{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:30px;text-transform:uppercase;letter-spacing:2px;color:#fff}
+.tv-updated{font-size:11px;color:var(--muted);margin-top:3px}
+.tv-period-pill{background:var(--orange-bg);border:1px solid var(--orange);border-radius:99px;padding:5px 14px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--orange)}
+.tv-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));border-bottom:1px solid var(--border)}
+.tv-stat{padding:1rem 1.25rem;border-right:1px solid var(--border);text-align:center}
+.tv-stat:last-child{border-right:none}
+.tsl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px}
+.tsv{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--orange)}
+.tv-rows{padding:.5rem 0}
+.tv-row{display:grid;grid-template-columns:60px 1fr 60px 150px;align-items:center;padding:13px 1.5rem;border-bottom:1px solid #050f05;transition:background .2s}
+.tv-row:last-child{border-bottom:none}
+.tv-row.r1{background:linear-gradient(90deg,rgba(244,115,33,.12),transparent 70%)}
+.tv-row.r2{background:linear-gradient(90deg,rgba(255,255,255,.03),transparent 70%)}
+.tv-row.r3{background:linear-gradient(90deg,rgba(0,80,48,.08),transparent 70%)}
+.tv-rank{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;color:var(--muted);text-align:center}
+.tv-row.r1 .tv-rank{color:var(--gold);font-size:28px}
+.tv-row.r2 .tv-rank{color:#c0c0c0}
+.tv-row.r3 .tv-rank{color:var(--orange)}
+.tv-name{font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#fff}
+.tv-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.tv-streak{display:inline-block;background:var(--orange-bg);border:1px solid var(--orange);border-radius:3px;font-size:10px;font-weight:700;color:var(--orange2);padding:1px 6px;margin-left:6px;vertical-align:middle}
+.tv-bar-bg{height:5px;background:#0a180a;border-radius:99px;overflow:hidden;margin-top:7px}
+.tv-bar-fill{height:100%;border-radius:99px;background:var(--green2);transition:width .6s ease}
+.tv-bar-fill.gold-bar{background:linear-gradient(90deg,var(--orange),var(--gold2))}
+.tv-pct{font-size:12px;color:var(--muted);text-align:center}
+.tv-amount{font-family:'Barlow Condensed',sans-serif;font-size:21px;font-weight:700;text-align:right;color:#fff}
+.tv-row.r1 .tv-amount{color:var(--gold2);font-size:24px}
+.zero-row{opacity:.35}
+.move-up{color:#4dd68c;font-size:11px;font-weight:700;margin-left:5px}
+.move-down{color:var(--orange);font-size:11px;font-weight:700;margin-left:5px}
+
+/* ── CARDS ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--rl);padding:1.25rem;margin-bottom:1rem}
+.card-title{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:1rem;display:flex;align-items:center;gap:8px}
+.card-title::before{content:'';display:inline-block;width:3px;height:16px;background:var(--green2);border-radius:2px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1.25rem}
+.stat-mini{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:.875rem 1rem}
+.stat-mini-lbl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:5px}
+.stat-mini-val{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700}
+
+/* ── FORMS ── */
+.form-group{margin-bottom:1rem}
+.form-label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px}
+input[type=text],input[type=number],input[type=password],select,textarea{width:100%;padding:10px 14px;background:#020802;border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:'Barlow',sans-serif;font-size:14px;outline:none;transition:border-color .15s;-webkit-appearance:none}
+input:focus,select:focus,textarea:focus{border-color:var(--orange)}
+select option{background:#020802}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+
+/* ── BUTTONS ── */
+.btn{padding:10px 20px;border:none;border-radius:var(--r);font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;text-transform:uppercase;letter-spacing:1px;cursor:pointer;transition:opacity .15s,transform .1s;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{opacity:.88}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--green);color:var(--orange);border:1px solid var(--orange)}
+.btn-primary:hover{background:var(--green2);opacity:1}
+.btn-orange{background:var(--orange);color:#fff}
+.btn-orange:hover{background:var(--orange2);opacity:1}
+.btn-green{background:var(--green2);color:#fff}
+.btn-danger{background:#8b0000;color:#fff}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
+.btn-ghost:hover{border-color:var(--orange);color:var(--orange);opacity:1}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-full{width:100%;justify-content:center}
+
+/* ── BADGES ── */
+.badge{display:inline-block;padding:3px 9px;border-radius:3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.badge-pending{background:#1a0800;color:var(--orange);border:1px solid #3a1800}
+.badge-approved{background:#051a0d;color:#4dd68c;border:1px solid #0a2e18}
+.badge-rejected{background:#1a0505;color:#f07070;border:1px solid #2a0808}
+
+/* ── ALERTS ── */
+.alert{padding:10px 14px;border-radius:var(--r);font-size:13px;margin-bottom:1rem;border-left:3px solid}
+.alert-success{background:#051a0d;color:#4dd68c;border-color:var(--green2)}
+.alert-error{background:#1a0505;color:#f07070;border-color:var(--red)}
+.alert-info{background:var(--orange-bg);color:var(--orange2);border-color:var(--orange)}
+
+/* ── LISTS ── */
+.entry-list{border-radius:var(--rl);overflow:hidden;border:1px solid var(--border)}
+.entry-row{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card);font-size:13px;transition:background .15s}
+.entry-row:last-child{border-bottom:none}
+.entry-row:hover{background:var(--card2)}
+.avatar{width:34px;height:34px;border-radius:50%;background:#0a1800;border:1px solid var(--green2);display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:var(--green3);flex-shrink:0}
+.flex{display:flex;align-items:center;gap:8px}
+.flex-between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.empty{text-align:center;padding:3rem 1rem;color:var(--muted);font-size:14px;font-style:italic}
+.section-label{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:1.25rem 0 .75rem;display:flex;align-items:center;gap:8px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--orange);border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── MODAL ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;align-items:center;justify-content:center;padding:1rem}
+.modal-overlay.open{display:flex}
+.modal{background:var(--dark);border:1px solid var(--border);border-top:3px solid var(--orange);border-radius:var(--rl);padding:1.5rem;width:100%;max-width:440px}
+.modal-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:20px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:1.25rem}
+
+/* ── ADMIN INNER TABS ── */
+.inner-nav{display:flex;border-bottom:1px solid var(--border);margin-bottom:1.25rem;flex-wrap:wrap}
+.itab{padding:9px 16px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
+.itab:hover{color:var(--text)}
+.itab.active{color:var(--orange);border-bottom-color:var(--orange)}
+
+/* ── LOGIN ── */
+.login-wrap{max-width:420px;margin:2.5rem auto}
+.login-logo{text-align:center;margin-bottom:2rem}
+.login-icon{width:60px;height:60px;background:var(--green);border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:26px;color:var(--orange);margin:0 auto 12px;border:2px solid var(--orange)}
+.login-name{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:1.5px}
+.login-sub{font-size:11px;color:var(--orange);letter-spacing:2px;text-transform:uppercase}
+
+/* ── MANAGER SELECT ── */
+.manager-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:1rem}
+.mgr-btn{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:12px;cursor:pointer;text-align:center;transition:border-color .2s,background .2s;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:var(--text)}
+.mgr-btn:hover{border-color:var(--orange);background:var(--card2);color:var(--orange)}
+.mgr-btn.selected{border-color:var(--orange);background:var(--orange-bg);color:var(--orange)}
+
+/* ── PERSONAL BEST BADGE ── */
+.pb-badge{display:inline-block;background:var(--orange-bg);border:1px solid var(--orange);border-radius:4px;padding:4px 10px;font-size:11px;color:var(--orange2);font-weight:700}
+
+/* ── WELCOME STRIP ── */
+.welcome-strip{background:linear-gradient(90deg,var(--green),var(--green2));border-radius:var(--r);padding:8px 14px;margin-bottom:1rem;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#fff;display:flex;align-items:center;gap:8px}
+
+@media(max-width:640px){
+  .form-row,.form-row-3{grid-template-columns:1fr}
+  .tv-row{grid-template-columns:42px 1fr 44px 90px}
+  .top-nav{overflow-x:auto}
+  .tnav-btn{padding:14px 12px;font-size:11px}
+  .manager-grid{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- SEBASTIAN BACKGROUND -->
+<div class="sebastian-bg"></div>
+
+<!-- CONFETTI -->
+<canvas id="confetti-canvas"></canvas>
+
+<!-- ANNOUNCEMENT BANNER -->
+<div class="announce-bar" id="announce-bar">
+  <div class="announce-inner">
+    <span class="announce-text" id="announce-text"></span>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="hdr">
+  <div class="logo" onclick="navTo('scoreboard')">
+    <div class="logo-box">FH</div>
+    <div class="logo-text">
+      <div class="l1">First Health Enrollment</div>
+      <div class="l2">Commission Scoreboard</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="live-badge"><div class="live-dot"></div> Live</div>
+  </div>
+</header>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <button class="tnav-btn active" id="tn-scoreboard" onclick="navTo('scoreboard')">📺 Scoreboard</button>
+  <button class="tnav-btn" id="tn-agent" onclick="navTo('agent')">👤 Agent Portal</button>
+  <button class="tnav-btn admin-btn" id="tn-admin" onclick="navTo('admin')">🛡️ Admin <span class="pcnt-pill" id="hdr-pcnt" style="display:none">0</span></button>
+</nav>
+
+<!-- ══ SCOREBOARD ══ -->
+<div class="page active" id="page-scoreboard">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px;padding-top:.25rem">
+    <div class="period-bar">
+      <button class="period-btn active" id="pb-today" onclick="setPeriod('today')">Today</button>
+      <button class="period-btn" id="pb-week" onclick="setPeriod('week')">Week to date</button>
+      <button class="period-btn" id="pb-all" onclick="setPeriod('all')">All time</button>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="loadBoard()">↻ Refresh</button>
+  </div>
+  <div class="tv-wrap">
+    <div class="tv-hdr">
+      <div>
+        <div class="eyebrow">First Health Enrollment</div>
+        <h2>Agent Leaderboard</h2>
+        <div class="tv-updated" id="tv-updated">Loading...</div>
+      </div>
+      <div class="tv-period-pill" id="tv-period-pill">Today</div>
+    </div>
+    <div class="tv-stats" id="tv-stats"></div>
+    <div class="tv-rows" id="tv-rows"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+  </div>
+  <div style="text-align:center;font-size:11px;color:var(--muted)">Auto-refreshes every 30s · Approved commissions only · All agents shown</div>
+</div>
+
+<!-- ══ AGENT PORTAL ══ -->
+<div class="page" id="page-agent">
+  <div id="agent-login-section">
+    <div class="login-wrap">
+      <div class="login-logo">
+        <div class="login-icon">FH</div>
+        <div class="login-name">Agent Sign In</div>
+        <div class="login-sub">First Health Enrollment</div>
+      </div>
+      <div class="card">
+        <div id="al-alert"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Your name</label><input type="text" id="al-name" placeholder="Registered name"></div>
+          <div class="form-group"><label class="form-label">PIN</label><input type="password" id="al-pin" placeholder="4-digit PIN" maxlength="4"></div>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="agentLogin()"><span id="al-spin" style="display:none"><span class="spinner"></span></span>Sign In</button>
+      </div>
+    </div>
+  </div>
+  <div id="agent-portal-section" style="display:none">
+    <div class="flex-between" style="margin-bottom:1.25rem;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;text-transform:uppercase;letter-spacing:1px" id="agent-welcome">Agent Portal</div>
+        <div style="font-size:12px;color:var(--muted)">Submit and track your commissions</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="agentLogout()">Sign out</button>
+    </div>
+    <div id="submit-alert"></div>
+    <div id="agent-pb" style="margin-bottom:1rem"></div>
+    <div class="stat-grid" id="agent-stats"></div>
+    <div class="card">
+      <div class="card-title">Submit a Commission</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Amount ($)</label><input type="number" id="cm-amount" placeholder="e.g. 1500" min="0" step="0.01"></div>
+        <div class="form-group"><label class="form-label">Note (optional)</label><input type="text" id="cm-note" placeholder="e.g. Client name or plan"></div>
+      </div>
+      <button class="btn btn-orange" onclick="submitComm()"><span id="cm-spin" style="display:none"><span class="spinner"></span></span>Submit Commission</button>
+    </div>
+    <div class="section-label">My Submissions</div>
+    <div class="entry-list" id="agent-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+  </div>
+</div>
+
+<!-- ══ ADMIN ══ -->
+<div class="page" id="page-admin">
+  <!-- LOGIN -->
+  <div id="admin-login-section">
+    <div class="login-wrap">
+      <div class="login-logo">
+        <div class="login-icon">🛡️</div>
+        <div class="login-name">Admin / Manager</div>
+        <div class="login-sub">First Health Enrollment</div>
+      </div>
+      <div class="card">
+        <div id="adl-alert"></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Select your name or enter admin credentials</div>
+        <!-- MANAGER QUICK SELECT -->
+        <div class="section-label" style="margin-top:0">Select Manager</div>
+        <div class="manager-grid" id="mgr-grid">
+          <div class="mgr-btn" onclick="selectMgr(this,'joshuadiaz','Joshua Diaz')">Joshua Diaz</div>
+          <div class="mgr-btn" onclick="selectMgr(this,'yamilljulian','Yamill Julian')">Yamill Julian</div>
+          <div class="mgr-btn" onclick="selectMgr(this,'jordankyles','Jordan Kyles')">Jordan Kyles</div>
+          <div class="mgr-btn" onclick="selectMgr(this,'michaelbregio','Michael Bregio')">Michael Bregio</div>
+          <div class="mgr-btn" onclick="selectMgr(this,'markcaraher','Mark Caraher')">Mark Caraher</div>
+          <div class="mgr-btn" onclick="selectMgr(this,'michaelsanguily','Michael Sanguily')">Michael Sanguily</div>
+        </div>
+        <div class="section-label">Or enter credentials</div>
+        <div class="form-group"><label class="form-label">Username</label><input type="text" id="adl-user" placeholder="admin"></div>
+        <div class="form-group"><label class="form-label">Password / PIN</label><input type="password" id="adl-pass" placeholder="Password or PIN"></div>
+        <button class="btn btn-primary btn-full" onclick="adminLogin()"><span id="adl-spin" style="display:none"><span class="spinner"></span></span>Sign In</button>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:10px">Managers: select your name above then enter PIN 12985</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL -->
+  <div id="admin-panel-section" style="display:none">
+    <div id="admin-welcome-strip"></div>
+    <div class="flex-between" style="margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--orange)" id="admin-panel-title">Admin Panel</div>
+        <div style="font-size:12px;color:var(--muted)">Manage agents and approve commissions</div>
+      </div>
+      <div class="flex">
+        <button class="btn btn-ghost btn-sm" onclick="loadAdmin()">↻ Refresh</button>
+        <button class="btn btn-ghost btn-sm" onclick="adminLogout()">Sign out</button>
+      </div>
+    </div>
+    <div class="stat-grid" id="admin-stats"></div>
+
+    <!-- ANNOUNCEMENT -->
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-title">📢 Announcement Banner</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:.75rem">Scrolls across the TV scoreboard</div>
+      <div class="flex" style="gap:8px;flex-wrap:wrap">
+        <input type="text" id="announce-input" placeholder="e.g. Great job team! Keep closing! 🔥" style="flex:1;min-width:200px">
+        <button class="btn btn-orange btn-sm" onclick="setAnnouncement()">Post</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearAnnouncement()">Clear</button>
+      </div>
+    </div>
+
+    <div class="inner-nav">
+      <button class="itab active" id="it-pending" onclick="adminTab('pending')">Pending <span class="pcnt-pill" id="pcnt">0</span></button>
+      <button class="itab" id="it-addcomm" onclick="adminTab('addcomm')">Add Commission</button>
+      <button class="itab" id="it-agents" onclick="adminTab('agents')">Agents</button>
+      <button class="itab" id="it-all" onclick="adminTab('all')">All Entries</button>
+    </div>
+    <div id="admin-alert"></div>
+    <div id="itab-pending"><div class="entry-list" id="pending-list"><div class="empty"><span class="spinner"></span> Loading...</div></div></div>
+    <div id="itab-addcomm" style="display:none">
+      <div class="card">
+        <div class="card-title">Add Commission for Agent</div>
+        <div id="admin-comm-alert"></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Auto-approved. Use when agent forgets to log a deal.</div>
+        <div class="form-row-3">
+          <div class="form-group"><label class="form-label">Agent</label><select id="ac-agent"><option value="">— Choose —</option></select></div>
+          <div class="form-group"><label class="form-label">Amount ($)</label><input type="number" id="ac-amount" placeholder="e.g. 1500" min="0" step="0.01"></div>
+          <div class="form-group"><label class="form-label">Note</label><input type="text" id="ac-note" placeholder="Optional"></div>
+        </div>
+        <button class="btn btn-orange" onclick="adminAddComm()"><span id="ac-spin" style="display:none"><span class="spinner"></span></span>Add & Approve</button>
+      </div>
+    </div>
+    <div id="itab-agents" style="display:none">
+      <div class="card">
+        <div class="card-title">Add Agent</div>
+        <div id="add-agent-alert"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Full name</label><input type="text" id="na-name" placeholder="e.g. Maria Rodriguez"></div>
+          <div class="form-group"><label class="form-label">PIN (4 digits)</label><input type="text" id="na-pin" placeholder="e.g. 2847" maxlength="4"></div>
+        </div>
+        <button class="btn btn-primary" onclick="addAgent()"><span id="na-spin" style="display:none"><span class="spinner"></span></span>Add Agent</button>
+      </div>
+      <div class="section-label">Registered Agents</div>
+      <div class="entry-list" id="agents-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+    </div>
+    <div id="itab-all" style="display:none">
+      <div class="entry-list" id="all-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-title">✏️ Edit Commission</div>
+    <input type="hidden" id="edit-id">
+    <div class="form-group"><label class="form-label">Amount ($)</label><input type="number" id="edit-amount" min="0" step="0.01"></div>
+    <div class="form-group"><label class="form-label">Note</label><input type="text" id="edit-note" placeholder="Optional"></div>
+    <div class="flex" style="gap:8px;margin-top:.5rem">
+      <button class="btn btn-orange btn-full" onclick="saveEdit()">Save changes</button>
+      <button class="btn btn-ghost" onclick="closeEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const sb = supabase.createClient(
+  'https://sralgaskfktcynpdxjhj.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyYWxnYXNrZmt0Y3lucGR4amhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NTU3NjUsImV4cCI6MjA5ODMzMTc2NX0.XqtIEprNHOZgXbI7hvn5O1OENQeLzbx5ZmvW9gV206E'
+);
+
+// ── ADMIN/MANAGER CREDENTIALS ──
+const ADMINS = [
+  { username:'admin',           password:'Admin1234!', name:'Admin' },
+  { username:'joshuadiaz',      password:'12985',      name:'Joshua Diaz' },
+  { username:'yamilljulian',    password:'12985',      name:'Yamill Julian' },
+  { username:'jordankyles',     password:'12985',      name:'Jordan Kyles' },
+  { username:'michaelbregio',   password:'12985',      name:'Michael Bregio' },
+  { username:'markcaraher',     password:'12985',      name:'Mark Caraher' },
+  { username:'michaelsanguily', password:'12985',      name:'Michael Sanguily' },
+];
+let currentAdmin=null, selectedMgrUsername=null;
+
+// ── DATE HELPERS ──
+function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d.toISOString();}
+function startOfWeek(){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());return d.toISOString();}
+
+// ── DB ──
+async function getAgents(){const{data}=await sb.from('agents').select('*').order('name');return data||[];}
+async function getAllComms(){const{data}=await sb.from('commissions').select('*').order('created_at',{ascending:false});return data||[];}
+async function getApprovedByPeriod(period){
+  let q=sb.from('commissions').select('*').eq('status','approved');
+  if(period==='today')q=q.gte('approved_at',startOfToday());
+  else if(period==='week')q=q.gte('approved_at',startOfWeek());
+  const{data}=await q;return data||[];
+}
+async function insertAgent(a){const{data,error}=await sb.from('agents').insert(a).select().single();if(error)throw error;return data;}
+async function insertComm(c){const{data,error}=await sb.from('commissions').insert(c).select().single();if(error)throw error;return data;}
+async function updateComm(id,u){const{error}=await sb.from('commissions').update(u).eq('id',id);if(error)throw error;}
+async function deleteAgent(id){const{error}=await sb.from('agents').delete().eq('id',id);if(error)throw error;}
+async function deleteCommDB(id){const{error}=await sb.from('commissions').delete().eq('id',id);if(error)throw error;}
+
+// ── APP STATE ──
+let currentAgent=null,adminAuthed=false,refreshTimer=null,currentPeriod='today',prevRankings={},prevTop=null;
+
+function fmt(n){return'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function initials(n){return n.trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2);}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function alert$(id,msg,type){const el=document.getElementById(id);if(el)el.innerHTML=msg?`<div class="alert alert-${type}">${esc(msg)}</div>`:'';}
+function sCard(lbl,val,color){return`<div class="stat-mini"><div class="stat-mini-lbl">${lbl}</div><div class="stat-mini-val" style="color:${color||'var(--orange)'}">${val}</div></div>`;}
+
+// ── NAVIGATION ──
+function navTo(page){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  document.querySelectorAll('.tnav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tn-'+page).classList.add('active');
+  if(page==='scoreboard'){loadBoard();startRefresh();}else stopRefresh();
+  if(page==='agent'&&currentAgent)loadAgentView();
+  if(page==='admin'&&adminAuthed)loadAdmin();
+}
+function startRefresh(){stopRefresh();refreshTimer=setInterval(loadBoard,30000);}
+function stopRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}}
+
+// ── CONFETTI ──
+function fireConfetti(){
+  const canvas=document.getElementById('confetti-canvas');
+  canvas.classList.add('active');
+  const ctx=canvas.getContext('2d');
+  canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+  const pieces=[];
+  const colors=['#005030','#f47321','#ffffff','#00703c','#f0c040','#ff8c3a'];
+  for(let i=0;i<160;i++){
+    pieces.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height-canvas.height,
+      w:Math.random()*10+5,h:Math.random()*6+3,color:colors[Math.floor(Math.random()*colors.length)],
+      speed:Math.random()*3+2,angle:Math.random()*360,spin:Math.random()*4-2,opacity:1});
+  }
+  let frame=0;
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    pieces.forEach(p=>{
+      p.y+=p.speed;p.angle+=p.spin;
+      if(frame>120)p.opacity=Math.max(0,p.opacity-.015);
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle*Math.PI/180);
+      ctx.globalAlpha=p.opacity;ctx.fillStyle=p.color;
+      ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();
+    });
+    frame++;
+    if(frame<200)requestAnimationFrame(draw);
+    else{canvas.classList.remove('active');ctx.clearRect(0,0,canvas.width,canvas.height);}
+  }
+  draw();
+}
+
+// ── ANNOUNCEMENT ──
+function setAnnouncement(){
+  const msg=document.getElementById('announce-input').value.trim();
+  if(!msg)return;
+  localStorage.setItem('fhe_announce',msg);
+  showAnnouncement(msg);
+  document.getElementById('announce-input').value='';
+  alert$('admin-alert','Announcement posted!','success');
+}
+function clearAnnouncement(){
+  localStorage.removeItem('fhe_announce');
+  document.getElementById('announce-bar').classList.remove('visible');
+  alert$('admin-alert','Announcement cleared.','info');
+}
+function showAnnouncement(msg){
+  if(!msg)return;
+  document.getElementById('announce-text').textContent='🏈 '+msg+' · 🏈 '+msg+' · ';
+  document.getElementById('announce-bar').classList.add('visible');
+}
+const savedAnnounce=localStorage.getItem('fhe_announce');
+if(savedAnnounce)showAnnouncement(savedAnnounce);
+
+// ── STREAK / PERSONAL BEST ──
+function calcStreak(comms,agentId){
+  const approved=comms.filter(c=>c.agent_id===agentId&&c.status==='approved'&&c.approved_at);
+  if(!approved.length)return 0;
+  const days=new Set(approved.map(c=>c.approved_at.slice(0,10)));
+  let streak=0;const today=new Date();
+  for(let i=0;i<365;i++){const d=new Date(today);d.setDate(d.getDate()-i);if(days.has(d.toISOString().slice(0,10)))streak++;else if(i>0)break;}
+  return streak;
+}
+function calcPersonalBest(comms,agentId){
+  const approved=comms.filter(c=>c.agent_id===agentId&&c.status==='approved'&&c.approved_at);
+  if(!approved.length)return{bestDay:0,bestWeek:0};
+  const byDay={};approved.forEach(c=>{const d=c.approved_at.slice(0,10);byDay[d]=(byDay[d]||0)+Number(c.amount);});
+  const bestDay=Math.max(...Object.values(byDay));
+  const byWeek={};approved.forEach(c=>{const d=new Date(c.approved_at);d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());const wk=d.toISOString().slice(0,10);byWeek[wk]=(byWeek[wk]||0)+Number(c.amount);});
+  const bestWeek=Math.max(...Object.values(byWeek));
+  return{bestDay,bestWeek};
+}
+
+// ── SCOREBOARD ──
+function setPeriod(p){
+  currentPeriod=p;prevRankings={};
+  ['today','week','all'].forEach(x=>document.getElementById('pb-'+x).classList.toggle('active',x===p));
+  document.getElementById('tv-period-pill').textContent={today:'Today',week:'Week to date',all:'All time'}[p];
+  loadBoard();
+}
+
+async function loadBoard(){
+  const[agents,periodComms]=await Promise.all([getAgents(),getApprovedByPeriod(currentPeriod)]);
+  const totals={};agents.forEach(a=>{totals[a.name]=0;});
+  periodComms.forEach(c=>{if(totals[c.agent_name]===undefined)totals[c.agent_name]=0;totals[c.agent_name]+=Number(c.amount);});
+  const withComm=Object.entries(totals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const without=Object.entries(totals).filter(([,v])=>v===0).sort((a,b)=>a[0].localeCompare(b[0]));
+  const ranked=[...withComm,...without];
+  const max=withComm.length?withComm[0][1]:1;
+  const total=withComm.reduce((s,[,v])=>s+v,0);
+  const newTop=withComm.length?withComm[0][0]:null;
+  if(newTop&&prevTop&&newTop!==prevTop)fireConfetti();
+  prevTop=newTop;
+  let allTotals={};
+  if(currentPeriod!=='all'){const{data}=await sb.from('commissions').select('agent_name,amount').eq('status','approved');(data||[]).forEach(c=>{allTotals[c.agent_name]=(allTotals[c.agent_name]||0)+Number(c.amount);});}
+  const allCommsFull=await getAllComms();
+  const agentMap={};agents.forEach(a=>{agentMap[a.name]=a.id;});
+  document.getElementById('tv-updated').textContent='Updated '+new Date().toLocaleTimeString();
+  const pLabel={today:'Today',week:'This week',all:'All time'}[currentPeriod];
+  document.getElementById('tv-stats').innerHTML=
+    `<div class="tv-stat"><div class="tsl">Agents</div><div class="tsv">${agents.length}</div></div>`+
+    `<div class="tv-stat"><div class="tsl">${pLabel} total</div><div class="tsv">${fmt(total)}</div></div>`+
+    `<div class="tv-stat"><div class="tsl">Top agent</div><div class="tsv" style="font-size:15px;color:#fff">${withComm.length?esc(withComm[0][0].split(' ')[0]):'—'}</div></div>`+
+    `<div class="tv-stat"><div class="tsl">Avg / agent</div><div class="tsv" style="color:var(--green3)">${withComm.length?fmt(Math.round(total/withComm.length)):'$0'}</div></div>`;
+  const medals=['🥇','🥈','🥉'];
+  const newRankings={};ranked.forEach(([name],i)=>{newRankings[name]=i;});
+  document.getElementById('tv-rows').innerHTML=ranked.map(([name,amt],i)=>{
+    const pct=amt>0?Math.round((amt/max)*100):0,cls=['r1','r2','r3'][i]||'',zero=amt===0?'zero-row':'',isGold=i===0&&amt>0;
+    let moveHtml='';
+    if(prevRankings[name]!==undefined&&amt>0){const diff=prevRankings[name]-i;if(diff>0)moveHtml=`<span class="move-up">▲${diff}</span>`;else if(diff<0)moveHtml=`<span class="move-down">▼${Math.abs(diff)}</span>`;}
+    const agentId=agentMap[name];
+    const streak=agentId?calcStreak(allCommsFull,agentId):0;
+    const streakHtml=streak>=2?`<span class="tv-streak">🔥${streak}d</span>`:'';
+    const allAmt=allTotals[name]||0;
+    const showAll=currentPeriod!=='all'&&allAmt>0;
+    return`<div class="tv-row ${cls} ${zero}"><div class="tv-rank">${amt>0&&i<3?medals[i]:(amt>0?i+1:'—')}</div><div><div class="tv-name">${esc(name)}${moveHtml}${streakHtml}</div>${showAll?`<div class="tv-sub">All time: ${fmt(allAmt)}</div>`:''}<div class="tv-bar-bg"><div class="tv-bar-fill ${isGold?'gold-bar':''}" style="width:${pct}%"></div></div></div><div class="tv-pct">${amt>0?pct+'%':'—'}</div><div class="tv-amount">${amt>0?fmt(amt):'$0'}</div></div>`;
+  }).join('')||'<div class="empty">No agents yet</div>';
+  prevRankings=newRankings;
+}
+
+// ── AGENT ──
+async function agentLogin(){
+  const name=document.getElementById('al-name').value.trim(),pin=document.getElementById('al-pin').value.trim();
+  alert$('al-alert','','');
+  if(!name||!pin){alert$('al-alert','Enter your name and PIN.','error');return;}
+  document.getElementById('al-spin').style.display='inline';
+  const agents=await getAgents();
+  document.getElementById('al-spin').style.display='none';
+  const agent=agents.find(a=>a.name.toLowerCase()===name.toLowerCase()&&a.pin===pin);
+  if(!agent){alert$('al-alert','Name or PIN not found. Contact your admin.','error');return;}
+  currentAgent=agent;
+  document.getElementById('agent-welcome').textContent='Welcome, '+agent.name;
+  document.getElementById('agent-login-section').style.display='none';
+  document.getElementById('agent-portal-section').style.display='block';
+  loadAgentView();
+}
+function agentLogout(){currentAgent=null;document.getElementById('agent-login-section').style.display='block';document.getElementById('agent-portal-section').style.display='none';document.getElementById('al-name').value='';document.getElementById('al-pin').value='';}
+
+async function loadAgentView(){
+  if(!currentAgent)return;
+  const comms=await getAllComms(),mine=comms.filter(c=>c.agent_id===currentAgent.id),approved=mine.filter(c=>c.status==='approved');
+  const todayStart=new Date();todayStart.setHours(0,0,0,0);
+  const weekStart=new Date();weekStart.setHours(0,0,0,0);weekStart.setDate(weekStart.getDate()-weekStart.getDay());
+  const todayAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart).reduce((s,c)=>s+Number(c.amount),0);
+  const weekAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=weekStart).reduce((s,c)=>s+Number(c.amount),0);
+  const totalAmt=approved.reduce((s,c)=>s+Number(c.amount),0);
+  const{bestDay,bestWeek}=calcPersonalBest(comms,currentAgent.id);
+  const streak=calcStreak(comms,currentAgent.id);
+  document.getElementById('agent-pb').innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:.5rem">${bestDay>0?`<div class="pb-badge">🏅 Best day: ${fmt(bestDay)}</div>`:''} ${bestWeek>0?`<div class="pb-badge">🏆 Best week: ${fmt(bestWeek)}</div>`:''} ${streak>=2?`<div class="pb-badge">🔥 ${streak}-day streak</div>`:''}</div>`;
+  document.getElementById('agent-stats').innerHTML=sCard('Today',fmt(todayAmt),'var(--orange)')+sCard('This week',fmt(weekAmt),'var(--gold)')+sCard('All time',fmt(totalAmt),'var(--green3)');
+  const el=document.getElementById('agent-list');
+  if(!mine.length){el.innerHTML='<div class="empty">No submissions yet</div>';return;}
+  el.innerHTML=mine.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><span style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:3px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
+}
+
+async function submitComm(){
+  if(!currentAgent)return;
+  const amount=parseFloat(document.getElementById('cm-amount').value),note=document.getElementById('cm-note').value.trim();
+  alert$('submit-alert','','');
+  if(isNaN(amount)||amount<=0){alert$('submit-alert','Enter a valid dollar amount.','error');return;}
+  document.getElementById('cm-spin').style.display='inline';
+  try{await insertComm({agent_id:currentAgent.id,agent_name:currentAgent.name,amount,note,status:'pending'});document.getElementById('cm-amount').value='';document.getElementById('cm-note').value='';alert$('submit-alert','Submitted! Pending admin approval.','success');loadAgentView();}
+  catch(e){alert$('submit-alert','Error submitting.','error');}
+  document.getElementById('cm-spin').style.display='none';
+}
+
+// ── MANAGER SELECT ──
+function selectMgr(btn, username, name){
+  document.querySelectorAll('.mgr-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedMgrUsername=username;
+  document.getElementById('adl-user').value=username;
+  document.getElementById('adl-pass').value='';
+  document.getElementById('adl-pass').placeholder='Enter PIN (12985)';
+  document.getElementById('adl-pass').focus();
+}
+
+// ── ADMIN LOGIN ──
+async function adminLogin(){
+  const user=document.getElementById('adl-user').value.trim();
+  const pass=document.getElementById('adl-pass').value;
+  alert$('adl-alert','','');
+  document.getElementById('adl-spin').style.display='inline';
+  await new Promise(r=>setTimeout(r,350));
+  document.getElementById('adl-spin').style.display='none';
+  const found=ADMINS.find(a=>a.username===user&&a.password===pass);
+  if(found){
+    currentAdmin=found;adminAuthed=true;
+    document.getElementById('admin-login-section').style.display='none';
+    document.getElementById('admin-panel-section').style.display='block';
+    document.getElementById('admin-panel-title').textContent=found.name==='Admin'?'Admin Panel':found.name+" — Admin Panel";
+    document.getElementById('admin-welcome-strip').innerHTML=`<div class="welcome-strip">👋 Welcome, ${esc(found.name)}! You have full admin access.</div>`;
+    loadAdmin();
+  }else{
+    alert$('adl-alert','Invalid credentials. Check your username and PIN.','error');
+    selectedMgrUsername=null;
+    document.querySelectorAll('.mgr-btn').forEach(b=>b.classList.remove('selected'));
+  }
+}
+
+function adminLogout(){
+  currentAdmin=null;adminAuthed=false;selectedMgrUsername=null;
+  document.getElementById('admin-login-section').style.display='block';
+  document.getElementById('admin-panel-section').style.display='none';
+  document.getElementById('adl-pass').value='';document.getElementById('adl-user').value='';
+  document.querySelectorAll('.mgr-btn').forEach(b=>b.classList.remove('selected'));
+  document.getElementById('hdr-pcnt').style.display='none';
+}
+
+function adminTab(tab){
+  ['pending','addcomm','agents','all'].forEach(t=>{document.getElementById('itab-'+t).style.display=t===tab?'block':'none';document.getElementById('it-'+t).classList.toggle('active',t===tab);});
+  if(tab==='pending')loadPending();if(tab==='addcomm')loadAgentDropdown();if(tab==='agents')loadAgents();if(tab==='all')loadAll();
+}
+
+async function loadAdmin(){
+  const comms=await getAllComms(),approved=comms.filter(c=>c.status==='approved');
+  const todayStart=new Date();todayStart.setHours(0,0,0,0);
+  const weekStart=new Date();weekStart.setHours(0,0,0,0);weekStart.setDate(weekStart.getDate()-weekStart.getDay());
+  const todayAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart).reduce((s,c)=>s+Number(c.amount),0);
+  const weekAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=weekStart).reduce((s,c)=>s+Number(c.amount),0);
+  const totalAmt=approved.reduce((s,c)=>s+Number(c.amount),0);
+  const pending=comms.filter(c=>c.status==='pending').length;
+  const pill=document.getElementById('hdr-pcnt');pill.textContent=pending;pill.style.display=pending>0?'inline':'none';
+  document.getElementById('admin-stats').innerHTML=sCard('Today approved',fmt(todayAmt),'var(--orange)')+sCard('Week to date',fmt(weekAmt),'var(--gold)')+sCard('All time',fmt(totalAmt),'var(--green3)')+sCard('Pending',pending,pending>0?'var(--orange)':'var(--muted)');
+  adminTab('pending');
+}
+
+async function loadPending(){
+  const comms=await getAllComms(),pending=comms.filter(c=>c.status==='pending');
+  document.getElementById('pcnt').textContent=pending.length;
+  document.getElementById('hdr-pcnt').textContent=pending.length;
+  document.getElementById('hdr-pcnt').style.display=pending.length>0?'inline':'none';
+  const el=document.getElementById('pending-list');
+  if(!pending.length){el.innerHTML='<div class="empty">✓ All caught up — no pending commissions</div>';return;}
+  el.innerHTML=pending.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:8px"><div class="flex"><div class="avatar">${esc(initials(c.agent_name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</div><div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div></div><div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--orange)">${fmt(c.amount)}</div></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px;padding-left:42px">${esc(c.note)}</div>`:''}<div style="display:flex;gap:8px;padding-left:42px;flex-wrap:wrap"><button class="btn btn-green btn-sm" onclick="approveComm('${esc(c.id)}')">✓ Approve</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="rejectComm('${esc(c.id)}')">✗ Reject</button><button class="btn btn-ghost btn-sm" onclick="openEdit('${esc(c.id)}','${esc(c.amount)}','${esc(c.note||'')}')">✏️ Edit</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="deleteComm('${esc(c.id)}','pending')">🗑 Delete</button></div></div>`).join('');
+}
+
+async function approveComm(id){try{await updateComm(id,{status:'approved',approved_at:new Date().toISOString()});alert$('admin-alert','Commission approved!','success');loadAdmin();}catch(e){alert$('admin-alert','Error approving.','error');}}
+async function rejectComm(id){try{await updateComm(id,{status:'rejected'});alert$('admin-alert','Commission rejected.','error');loadPending();}catch(e){alert$('admin-alert','Error rejecting.','error');}}
+async function deleteComm(id,source){if(!confirm('Delete this commission permanently?'))return;try{await deleteCommDB(id);alert$('admin-alert','Deleted.','success');if(source==='pending')loadAdmin();else loadAll();}catch(e){alert$('admin-alert','Error deleting.','error');}}
+
+function openEdit(id,amount,note){document.getElementById('edit-id').value=id;document.getElementById('edit-amount').value=amount;document.getElementById('edit-note').value=note;document.getElementById('edit-modal').classList.add('open');}
+function closeEdit(){document.getElementById('edit-modal').classList.remove('open');}
+async function saveEdit(){
+  const id=document.getElementById('edit-id').value,amount=parseFloat(document.getElementById('edit-amount').value),note=document.getElementById('edit-note').value.trim();
+  if(isNaN(amount)||amount<=0){alert('Enter a valid amount.');return;}
+  try{await updateComm(id,{amount,note});closeEdit();alert$('admin-alert','Commission updated!','success');loadPending();loadAll();}
+  catch(e){alert$('admin-alert','Error saving.','error');}
+}
+
+async function loadAgentDropdown(){
+  const agents=await getAgents(),sel=document.getElementById('ac-agent'),prev=sel.value;
+  sel.innerHTML='<option value="">— Choose agent —</option>'+agents.map(a=>`<option value="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}</option>`).join('');
+  if(prev)sel.value=prev;
+}
+
+async function adminAddComm(){
+  const sel=document.getElementById('ac-agent'),agentId=sel.value,agentName=sel.options[sel.selectedIndex]?.dataset?.name||'';
+  const amount=parseFloat(document.getElementById('ac-amount').value),note=document.getElementById('ac-note').value.trim();
+  alert$('admin-comm-alert','','');
+  if(!agentId){alert$('admin-comm-alert','Select an agent.','error');return;}
+  if(isNaN(amount)||amount<=0){alert$('admin-comm-alert','Enter a valid amount.','error');return;}
+  document.getElementById('ac-spin').style.display='inline';
+  try{
+    await insertComm({agent_id:agentId,agent_name:agentName,amount,note:note?'[Admin] '+note:'[Admin entry]',status:'approved',approved_at:new Date().toISOString()});
+    document.getElementById('ac-amount').value='';document.getElementById('ac-note').value='';sel.value='';
+    alert$('admin-comm-alert',agentName+' — '+fmt(amount)+' added!','success');loadAdmin();
+  }catch(e){alert$('admin-comm-alert','Error adding.','error');}
+  document.getElementById('ac-spin').style.display='none';
+}
+
+async function loadAgents(){
+  const agents=await getAgents(),el=document.getElementById('agents-list');
+  if(!agents.length){el.innerHTML='<div class="empty">No agents yet</div>';return;}
+  el.innerHTML=agents.map(a=>`<div class="entry-row flex-between"><div class="flex"><div class="avatar">${esc(initials(a.name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(a.name)}</div><div style="font-size:11px;color:var(--muted)">PIN: ${esc(a.pin)} · Added ${new Date(a.created_at).toLocaleDateString()}</div></div></div><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="removeAgent('${esc(a.id)}')">Remove</button></div>`).join('');
+}
+
+async function addAgent(){
+  const name=document.getElementById('na-name').value.trim(),pin=document.getElementById('na-pin').value.trim();
+  alert$('add-agent-alert','','');
+  if(!name){alert$('add-agent-alert','Enter the agent name.','error');return;}
+  if(!/^\d{4}$/.test(pin)){alert$('add-agent-alert','PIN must be exactly 4 digits.','error');return;}
+  document.getElementById('na-spin').style.display='inline';
+  try{await insertAgent({name,pin});document.getElementById('na-name').value='';document.getElementById('na-pin').value='';alert$('add-agent-alert',name+' added!','success');loadAgents();}
+  catch(e){alert$('add-agent-alert',e.message||'Error.','error');}
+  document.getElementById('na-spin').style.display='none';
+}
+
+async function removeAgent(id){if(!confirm('Remove this agent?'))return;try{await deleteAgent(id);loadAgents();}catch(e){alert$('add-agent-alert','Error removing.','error');}}
+
+async function loadAll(){
+  const comms=await getAllComms(),el=document.getElementById('all-list');
+  if(!comms.length){el.innerHTML='<div class="empty">No entries yet</div>';return;}
+  el.innerHTML=comms.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><div class="flex"><div class="avatar" style="width:28px;height:28px;font-size:10px">${esc(initials(c.agent_name))}</div><span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</span></div><div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span><button class="btn btn-ghost btn-sm" onclick="openEdit('${esc(c.id)}','${esc(c.amount)}','${esc(c.note||'')}')" style="padding:3px 8px;font-size:11px">✏️</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070;padding:3px 8px;font-size:11px" onclick="deleteComm('${esc(c.id)}','all')">🗑</button></div></div>${c.note?`<div style="font-size:12px;color:var(--muted);padding-left:36px;margin-bottom:2px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted);padding-left:36px">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
+}
+
+document.getElementById('edit-modal').addEventListener('click',function(e){if(e.target===this)closeEdit();});
+document.getElementById('al-pin').addEventListener('keydown',e=>{if(e.key==='Enter')agentLogin();});
+document.getElementById('adl-pass').addEventListener('keydown',e=>{if(e.key==='Enter')adminLogin();});
+
+loadBoard();startRefresh();
+setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
+</script>
+</body>
+</html>
