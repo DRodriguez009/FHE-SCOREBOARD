@@ -81,6 +81,8 @@ body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);m
 .tv-wrap.light-mode .tv-sub{color:#5a7a5a}
 .tv-wrap.light-mode .tv-amount{color:#0a200a}
 .tv-wrap.light-mode .tv-pct{color:#5a7a5a}
+.tv-wrap.light-mode .tv-sold-num{color:#0a200a}
+.tv-wrap.light-mode .tv-sold-lbl{color:#5a7a5a}
 .tv-wrap.light-mode .tv-bar-bg{background:#e2ecd8}
 .tv-wrap.light-mode .tv-rank{color:#5a7a5a}
 
@@ -95,7 +97,7 @@ body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);m
 .tsl{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px}
 .tsv{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--orange)}
 .tv-rows{padding:.5rem 0}
-.tv-row{display:grid;grid-template-columns:60px 1fr 60px 150px;align-items:center;padding:13px 1.5rem;border-bottom:1px solid #050f05;transition:background .2s}
+.tv-row{display:grid;grid-template-columns:60px 1fr 70px 60px 150px;align-items:center;padding:13px 1.5rem;border-bottom:1px solid #050f05;transition:background .2s}
 .tv-row:last-child{border-bottom:none}
 .tv-row.r1{background:linear-gradient(90deg,rgba(244,115,33,.12),transparent 70%)}
 .tv-row.r2{background:linear-gradient(90deg,rgba(255,255,255,.03),transparent 70%)}
@@ -110,6 +112,10 @@ body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);m
 .tv-bar-bg{height:5px;background:#0a180a;border-radius:99px;overflow:hidden;margin-top:7px}
 .tv-bar-fill{height:100%;border-radius:99px;background:var(--green2);transition:width .6s ease}
 .tv-bar-fill.gold-bar{background:linear-gradient(90deg,var(--orange),var(--gold2))}
+.tv-sold{text-align:center}
+.tv-sold-num{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:800;color:#fff}
+.tv-sold-lbl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-top:1px}
+.tv-row.r1 .tv-sold-num{color:var(--gold)}
 .tv-pct{font-size:12px;color:var(--muted);text-align:center}
 .tv-amount{font-family:'Barlow Condensed',sans-serif;font-size:21px;font-weight:700;text-align:right;color:#fff}
 .tv-row.r1 .tv-amount{color:var(--gold2);font-size:24px}
@@ -209,7 +215,7 @@ select option{background:#020802}
 
 @media(max-width:640px){
   .form-row,.form-row-3{grid-template-columns:1fr}
-  .tv-row{grid-template-columns:42px 1fr 44px 90px}
+  .tv-row{grid-template-columns:36px 1fr 44px 80px}
   .top-nav{overflow-x:auto}
   .tnav-btn{padding:14px 12px;font-size:11px}
   .manager-grid{grid-template-columns:1fr 1fr}
@@ -788,7 +794,7 @@ async function loadBoard(){
     const wtdCount=weekCounts[name]||0;
     const saleCount=counts[name]||0;
     const saleLabel=saleCount===1?'sale':'sales';
-    return`<div class="tv-row ${cls} ${zero}"><div class="tv-rank">${amt>0&&i<3?medals[i]:(amt>0?i+1:'—')}</div><div><div class="tv-name">${esc(name)}${moveHtml}${streakHtml}</div><div class="tv-sub">${saleCount} ${saleLabel} · Week to date: ${fmt(wtdAmt)} (${wtdCount})</div><div class="tv-bar-bg"><div class="tv-bar-fill ${isGold?'gold-bar':''}" style="width:${pct}%"></div></div></div><div class="tv-pct">${amt>0?pct+'%':'—'}</div><div class="tv-amount">${amt>0?fmt(amt):'$0'}</div></div>`;
+    return`<div class="tv-row ${cls} ${zero}"><div class="tv-rank">${amt>0&&i<3?medals[i]:(amt>0?i+1:'—')}</div><div><div class="tv-name">${esc(name)}${moveHtml}${streakHtml}</div><div class="tv-sub">Week to date: ${fmt(wtdAmt)} (${wtdCount} ${wtdCount===1?'sale':'sales'})</div><div class="tv-bar-bg"><div class="tv-bar-fill ${isGold?'gold-bar':''}" style="width:${pct}%"></div></div></div><div class="tv-sold"><div class="tv-sold-num">${saleCount}</div><div class="tv-sold-lbl">Sold</div></div><div class="tv-amount">${amt>0?fmt(amt):'$0'}</div></div>`;
   }).join('')||'<div class="empty">No agents yet</div>';
   prevRankings=newRankings;
 }
@@ -1451,7 +1457,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();con
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents see a "refresh now" banner
 // instead of getting silently served stale code.
-const APP_VERSION='2026-06-30-006';
+const APP_VERSION='2026-06-30-007';
 let updateBannerShown=false;
 async function checkForUpdate(){
   if(updateBannerShown)return;
