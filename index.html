@@ -252,6 +252,7 @@ select option{background:#020802}
 <nav class="top-nav">
   <button class="tnav-btn active" id="tn-scoreboard" onclick="navTo('scoreboard')">📺 Scoreboard</button>
   <button class="tnav-btn" id="tn-agent" onclick="navTo('agent')">👤 Agent Portal</button>
+  <button class="tnav-btn" id="tn-sportsbook" onclick="navTo('sportsbook')">🎲 Sportsbook</button>
   <button class="tnav-btn admin-btn" id="tn-admin" onclick="navTo('admin')">🛡️ Admin <span class="pcnt-pill" id="hdr-pcnt" style="display:none">0</span></button>
 </nav>
 
@@ -323,6 +324,122 @@ select option{background:#020802}
     </div>
     <div class="section-label">My Submissions</div>
     <div class="entry-list" id="agent-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+  </div>
+</div>
+
+<!-- ══ SPORTSBOOK ══ -->
+<div class="page" id="page-sportsbook">
+  <div id="sb-login-gate">
+    <div class="login-wrap">
+      <div class="login-logo">
+        <div class="login-icon">🎲</div>
+        <div class="login-name">Mike Coins Sportsbook</div>
+        <div class="login-sub">First Health Enrollment</div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:1rem">Sign in as an agent or manager/admin to place bets. Use the Agent Portal or Admin tab to sign in first, then come back here.</div>
+        <button class="btn btn-primary btn-full" onclick="navTo('agent')">Go to Agent Sign In</button>
+        <div style="height:8px"></div>
+        <button class="btn btn-ghost btn-full" onclick="navTo('admin')">Go to Admin / Manager Sign In</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="sb-main" style="display:none">
+    <div class="flex-between" style="margin-bottom:1rem;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--orange)">🎲 Mike Coins Sportsbook</div>
+        <div style="font-size:12px;color:var(--muted)">Bet Mike Coins on weekly performance — bragging rights only, no real money</div>
+      </div>
+      <div class="flex">
+        <div class="pb-badge" id="sb-balance" style="font-size:14px;padding:8px 16px">🪙 0 Mike Coins</div>
+        <button class="btn btn-ghost btn-sm" onclick="loadSportsbook()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div id="sb-alert"></div>
+
+    <!-- MANAGER: CREATE LINE -->
+    <div class="card" id="sb-manager-tools" style="display:none">
+      <div class="card-title">🛠️ Create a New Bet Line</div>
+      <div class="form-group">
+        <label class="form-label">Bet Type</label>
+        <select id="sbl-type" onchange="sblTypeChanged()">
+          <option value="head_to_head">Head-to-Head (Agent A vs Agent B)</option>
+          <option value="over_under">Over/Under (combined commission)</option>
+          <option value="prop">Yes/No Prop Bet</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Title</label><input type="text" id="sbl-title" placeholder="e.g. Josh vs Maria — Week of June 30"></div>
+      <div class="form-group"><label class="form-label">Description (optional)</label><input type="text" id="sbl-desc" placeholder="Extra context for agents placing bets"></div>
+
+      <div id="sbl-h2h-fields" class="form-row">
+        <div class="form-group"><label class="form-label">Agent A</label><select id="sbl-agent-a"><option value="">— Choose —</option></select></div>
+        <div class="form-group"><label class="form-label">Agent B</label><select id="sbl-agent-b"><option value="">— Choose —</option></select></div>
+      </div>
+      <div id="sbl-h2h-odds" class="form-row">
+        <div class="form-group"><label class="form-label">Odds — Agent A wins (payout x)</label><input type="number" id="sbl-odds-a" value="2.0" step="0.1" min="1.1"></div>
+        <div class="form-group"><label class="form-label">Odds — Agent B wins (payout x)</label><input type="number" id="sbl-odds-b" value="2.0" step="0.1" min="1.1"></div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="sbl-suggest-btn" onclick="suggestOdds()" style="display:none;margin-bottom:1rem">💡 Suggest odds from recent performance</button>
+
+      <div id="sbl-ou-fields" style="display:none">
+        <div class="form-group"><label class="form-label">Threshold ($)</label><input type="number" id="sbl-threshold" placeholder="e.g. 50000" min="0"></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Odds — Over (payout x)</label><input type="number" id="sbl-odds-over" value="2.0" step="0.1" min="1.1"></div>
+          <div class="form-group"><label class="form-label">Odds — Under (payout x)</label><input type="number" id="sbl-odds-under" value="2.0" step="0.1" min="1.1"></div>
+        </div>
+      </div>
+
+      <div id="sbl-prop-fields" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Odds — Yes (payout x)</label><input type="number" id="sbl-odds-yes" value="2.0" step="0.1" min="1.1"></div>
+          <div class="form-group"><label class="form-label">Odds — No (payout x)</label><input type="number" id="sbl-odds-no" value="2.0" step="0.1" min="1.1"></div>
+        </div>
+      </div>
+
+      <div class="form-group"><label class="form-label">Settles using</label>
+        <select id="sbl-period"><option value="week">This week's commission (week to date)</option><option value="today">Today's commission</option></select>
+      </div>
+      <button class="btn btn-orange" onclick="createBetLine()"><span id="sbl-spin" style="display:none"><span class="spinner"></span></span>Create Line</button>
+    </div>
+
+    <!-- MANAGER: SETTLE / MANAGE LINES -->
+    <div id="sb-manager-lines" style="display:none">
+      <div class="section-label">Manage Open Lines</div>
+      <div class="entry-list" id="sb-admin-lines-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+    </div>
+
+    <!-- OPEN LINES TO BET ON -->
+    <div class="section-label">Open Lines — Place Your Bet</div>
+    <div class="entry-list" id="sb-open-lines"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+
+    <!-- MY BET HISTORY -->
+    <div class="section-label">My Bet History</div>
+    <div class="entry-list" id="sb-my-bets"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+
+    <!-- TOP BETTOR LEADERBOARD -->
+    <div class="section-label">🏆 Top Bettors (All Participants)</div>
+    <div class="entry-list" id="sb-bettor-leaderboard"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+  </div>
+</div>
+
+<!-- PLACE BET MODAL -->
+<div class="modal-overlay" id="bet-modal">
+  <div class="modal">
+    <div class="modal-title" id="bet-modal-title">🎲 Place Your Bet</div>
+    <input type="hidden" id="bm-line-id">
+    <input type="hidden" id="bm-side">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:1rem" id="bm-side-display"></div>
+    <div class="form-group">
+      <label class="form-label">Amount (Mike Coins)</label>
+      <input type="number" id="bm-amount" min="1" step="1" placeholder="e.g. 25">
+      <div style="font-size:11px;color:var(--muted);margin-top:5px" id="bm-balance-note"></div>
+    </div>
+    <div class="flex" style="gap:8px;margin-top:.5rem">
+      <button class="btn btn-orange btn-full" onclick="confirmBet()">Place Bet</button>
+      <button class="btn btn-ghost" onclick="closeBetModal()">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -426,8 +543,9 @@ select option{background:#020802}
       <div class="entry-list" id="agents-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
     </div>
     <div id="itab-all" style="display:none">
-      <div class="form-group" style="margin-bottom:.75rem">
-        <input type="text" id="all-search" placeholder="🔍 Search by agent name..." oninput="filterAllEntries()">
+      <div class="flex-between" style="margin-bottom:.75rem;gap:10px;flex-wrap:wrap">
+        <input type="text" id="all-search" placeholder="🔍 Search by agent name..." oninput="filterAllEntries()" style="flex:1;min-width:200px">
+        <button class="btn btn-orange btn-sm" onclick="exportAllToCSV()">⬇️ Export CSV</button>
       </div>
       <div class="entry-list" id="all-list"><div class="empty"><span class="spinner"></span> Loading...</div></div>
     </div>
@@ -503,6 +621,7 @@ function navTo(page){
   if(page==='scoreboard'){loadBoard();startRefresh();}else stopRefresh();
   if(page==='agent'&&currentAgent)loadAgentView();
   if(page==='admin'&&adminAuthed)loadAdmin();
+  if(page==='sportsbook')initSportsbook();
 }
 function startRefresh(){stopRefresh();refreshTimer=setInterval(loadBoard,30000);}
 function stopRefresh(){if(refreshTimer){clearInterval(refreshTimer);refreshTimer=null;}}
@@ -627,20 +746,25 @@ function setPeriod(p){
 
 async function loadBoard(){
   const[agents,periodComms]=await Promise.all([getAgents(),getApprovedByPeriod(currentPeriod)]);
-  const totals={};agents.forEach(a=>{totals[a.name]=0;});
-  periodComms.forEach(c=>{if(totals[c.agent_name]===undefined)totals[c.agent_name]=0;totals[c.agent_name]+=Number(c.amount);});
+  const totals={},counts={};agents.forEach(a=>{totals[a.name]=0;counts[a.name]=0;});
+  periodComms.forEach(c=>{
+    if(totals[c.agent_name]===undefined){totals[c.agent_name]=0;counts[c.agent_name]=0;}
+    totals[c.agent_name]+=Number(c.amount);
+    counts[c.agent_name]+=1;
+  });
   const withComm=Object.entries(totals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
   const without=Object.entries(totals).filter(([,v])=>v===0).sort((a,b)=>a[0].localeCompare(b[0]));
   const ranked=[...withComm,...without];
   const max=withComm.length?withComm[0][1]:1;
   const total=withComm.reduce((s,[,v])=>s+v,0);
+  const totalSales=Object.values(counts).reduce((s,v)=>s+v,0);
   const newTop=withComm.length?withComm[0][0]:null;
   if(newTop&&prevTop&&newTop!==prevTop)fireConfetti();
   prevTop=newTop;
-  // Week-to-date totals per agent, always computed regardless of selected period
+  // Week-to-date totals + counts per agent, always computed regardless of selected period
   const weekComms=await getApprovedByPeriod('week');
-  const weekTotals={};
-  weekComms.forEach(c=>{weekTotals[c.agent_name]=(weekTotals[c.agent_name]||0)+Number(c.amount);});
+  const weekTotals={},weekCounts={};
+  weekComms.forEach(c=>{weekTotals[c.agent_name]=(weekTotals[c.agent_name]||0)+Number(c.amount);weekCounts[c.agent_name]=(weekCounts[c.agent_name]||0)+1;});
   const allCommsFull=await getAllComms();
   const agentMap={};agents.forEach(a=>{agentMap[a.name]=a.id;});
   document.getElementById('tv-updated').textContent='Updated '+new Date().toLocaleTimeString();
@@ -648,6 +772,7 @@ async function loadBoard(){
   document.getElementById('tv-stats').innerHTML=
     `<div class="tv-stat"><div class="tsl">Agents</div><div class="tsv">${agents.length}</div></div>`+
     `<div class="tv-stat"><div class="tsl">${pLabel} total</div><div class="tsv">${fmt(total)}</div></div>`+
+    `<div class="tv-stat"><div class="tsl">${pLabel} sales</div><div class="tsv">${totalSales}</div></div>`+
     `<div class="tv-stat"><div class="tsl">Top agent</div><div class="tsv" style="font-size:15px;color:#fff">${withComm.length?esc(withComm[0][0].split(' ')[0]):'—'}</div></div>`+
     `<div class="tv-stat"><div class="tsl">Avg / agent</div><div class="tsv" style="color:var(--green3)">${withComm.length?fmt(Math.round(total/withComm.length)):'$0'}</div></div>`;
   const medals=['🥇','🥈','🥉'];
@@ -660,7 +785,10 @@ async function loadBoard(){
     const streak=agentId?calcStreak(allCommsFull,agentId):0;
     const streakHtml=streak>=2?`<span class="tv-streak">🔥${streak}d</span>`:'';
     const wtdAmt=weekTotals[name]||0;
-    return`<div class="tv-row ${cls} ${zero}"><div class="tv-rank">${amt>0&&i<3?medals[i]:(amt>0?i+1:'—')}</div><div><div class="tv-name">${esc(name)}${moveHtml}${streakHtml}</div><div class="tv-sub">Week to date: ${fmt(wtdAmt)}</div><div class="tv-bar-bg"><div class="tv-bar-fill ${isGold?'gold-bar':''}" style="width:${pct}%"></div></div></div><div class="tv-pct">${amt>0?pct+'%':'—'}</div><div class="tv-amount">${amt>0?fmt(amt):'$0'}</div></div>`;
+    const wtdCount=weekCounts[name]||0;
+    const saleCount=counts[name]||0;
+    const saleLabel=saleCount===1?'sale':'sales';
+    return`<div class="tv-row ${cls} ${zero}"><div class="tv-rank">${amt>0&&i<3?medals[i]:(amt>0?i+1:'—')}</div><div><div class="tv-name">${esc(name)}${moveHtml}${streakHtml}</div><div class="tv-sub">${saleCount} ${saleLabel} · Week to date: ${fmt(wtdAmt)} (${wtdCount})</div><div class="tv-bar-bg"><div class="tv-bar-fill ${isGold?'gold-bar':''}" style="width:${pct}%"></div></div></div><div class="tv-pct">${amt>0?pct+'%':'—'}</div><div class="tv-amount">${amt>0?fmt(amt):'$0'}</div></div>`;
   }).join('')||'<div class="empty">No agents yet</div>';
   prevRankings=newRankings;
 }
@@ -694,7 +822,7 @@ async function loadAgentView(){
   const{bestDay,bestWeek}=calcPersonalBest(comms,currentAgent.id);
   const streak=calcStreak(comms,currentAgent.id);
   document.getElementById('agent-pb').innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:.5rem">${bestDay>0?`<div class="pb-badge">🏅 Best day: ${fmt(bestDay)}</div>`:''} ${bestWeek>0?`<div class="pb-badge">🏆 Best week: ${fmt(bestWeek)}</div>`:''} ${streak>=2?`<div class="pb-badge">🔥 ${streak}-day streak</div>`:''}</div>`;
-  document.getElementById('agent-stats').innerHTML=sCard('Today',fmt(todayAmt),'var(--orange)')+sCard('This week',fmt(weekAmt),'var(--gold)')+sCard('All time',fmt(totalAmt),'var(--green3)');
+  document.getElementById('agent-stats').innerHTML=sCard('Today',fmt(todayAmt),'var(--orange)')+sCard('This week',fmt(weekAmt),'var(--gold)')+sCard('All time',fmt(totalAmt),'var(--green3)')+sCard('Total sales',approved.length,'var(--gold)');
   const el=document.getElementById('agent-list');
   if(!mine.length){el.innerHTML='<div class="empty">No submissions yet</div>';return;}
   el.innerHTML=mine.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><span style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span></div>${c.note?`<div style="font-size:12px;color:var(--muted);margin-bottom:3px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted)">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
@@ -710,6 +838,339 @@ async function submitComm(){
   catch(e){alert$('submit-alert','Error submitting.','error');}
   document.getElementById('cm-spin').style.display='none';
 }
+
+// ══════════════════ SPORTSBOOK ══════════════════
+const HOUSE_CREDIT_AMOUNT=5;
+const HOUSE_CREDIT_THRESHOLD=0;
+const MAX_BET_PCT=0.5; // max 50% of balance per bet
+let sbCurrentBettor=null; // {type:'agent'|'manager', id, name}
+
+function getCurrentBettor(){
+  if(currentAgent)return{type:'agent',id:currentAgent.id,name:currentAgent.name};
+  if(adminAuthed&&currentAdmin)return{type:'manager',id:currentAdmin.username,name:currentAdmin.name};
+  return null;
+}
+
+async function getBettorWallet(bettor){
+  if(bettor.type==='agent'){
+    const{data}=await sb.from('agents').select('coins,last_house_credit_at').eq('id',bettor.id).single();
+    return data;
+  }else{
+    const{data}=await sb.from('managers_wallet').select('coins,last_house_credit_at').eq('username',bettor.id).single();
+    return data;
+  }
+}
+async function setBettorCoins(bettor,coins){
+  if(bettor.type==='agent')await sb.from('agents').update({coins}).eq('id',bettor.id);
+  else await sb.from('managers_wallet').update({coins}).eq('username',bettor.id);
+}
+
+async function applyHouseCreditIfNeeded(bettor){
+  const wallet=await getBettorWallet(bettor);
+  if(!wallet)return;
+  const coins=Number(wallet.coins)||0;
+  if(coins>HOUSE_CREDIT_THRESHOLD)return;
+  const last=wallet.last_house_credit_at?new Date(wallet.last_house_credit_at):null;
+  const now=new Date();
+  const isNewDay=!last||last.toDateString()!==now.toDateString();
+  if(isNewDay){
+    const newBal=coins+HOUSE_CREDIT_AMOUNT;
+    await setBettorCoins(bettor,newBal);
+    if(bettor.type==='agent')await sb.from('agents').update({last_house_credit_at:now.toISOString()}).eq('id',bettor.id);
+    else await sb.from('managers_wallet').update({last_house_credit_at:now.toISOString()}).eq('username',bettor.id);
+  }
+}
+
+async function initSportsbook(){
+  sbCurrentBettor=getCurrentBettor();
+  if(!sbCurrentBettor){
+    document.getElementById('sb-login-gate').style.display='block';
+    document.getElementById('sb-main').style.display='none';
+    return;
+  }
+  document.getElementById('sb-login-gate').style.display='none';
+  document.getElementById('sb-main').style.display='block';
+  document.getElementById('sb-manager-tools').style.display=sbCurrentBettor.type==='manager'?'block':'none';
+  document.getElementById('sb-manager-lines').style.display=sbCurrentBettor.type==='manager'?'block':'none';
+  if(sbCurrentBettor.type==='manager')document.getElementById('sbl-suggest-btn').style.display='inline-flex';
+  await applyHouseCreditIfNeeded(sbCurrentBettor);
+  loadSportsbook();
+}
+
+async function loadSportsbook(){
+  if(!sbCurrentBettor)return;
+  const wallet=await getBettorWallet(sbCurrentBettor);
+  const coins=wallet?Number(wallet.coins)||0:0;
+  document.getElementById('sb-balance').textContent=`🪙 ${coins.toLocaleString()} Mike Coins`;
+
+  if(sbCurrentBettor.type==='manager'){
+    await loadAgentDropdownsForLines();
+    await loadManagerLines();
+  }
+  await loadOpenLines();
+  await loadMyBets();
+  await loadBettorLeaderboard();
+}
+
+async function loadAgentDropdownsForLines(){
+  const agents=await getAgents();
+  const opts='<option value="">— Choose —</option>'+agents.map(a=>`<option value="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}</option>`).join('');
+  const selA=document.getElementById('sbl-agent-a'),selB=document.getElementById('sbl-agent-b');
+  if(selA)selA.innerHTML=opts;
+  if(selB)selB.innerHTML=opts;
+}
+
+function sblTypeChanged(){
+  const type=document.getElementById('sbl-type').value;
+  document.getElementById('sbl-h2h-fields').style.display=type==='head_to_head'?'grid':'none';
+  document.getElementById('sbl-h2h-odds').style.display=type==='head_to_head'?'grid':'none';
+  document.getElementById('sbl-suggest-btn').style.display=(type==='head_to_head'&&sbCurrentBettor&&sbCurrentBettor.type==='manager')?'inline-flex':'none';
+  document.getElementById('sbl-ou-fields').style.display=type==='over_under'?'block':'none';
+  document.getElementById('sbl-prop-fields').style.display=type==='prop'?'block':'none';
+}
+
+async function suggestOdds(){
+  const aId=document.getElementById('sbl-agent-a').value;
+  const bId=document.getElementById('sbl-agent-b').value;
+  if(!aId||!bId){alert$('sb-alert','Choose both agents first.','error');return;}
+  // Use trailing approved commission (last 2-4 weeks) as a rough performance signal
+  const fourWeeksAgo=new Date();fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
+  const{data}=await sb.from('commissions').select('agent_id,amount,approved_at').eq('status','approved').gte('approved_at',fourWeeksAgo.toISOString());
+  const totalA=(data||[]).filter(c=>c.agent_id===aId).reduce((s,c)=>s+Number(c.amount),0);
+  const totalB=(data||[]).filter(c=>c.agent_id===bId).reduce((s,c)=>s+Number(c.amount),0);
+  const sum=totalA+totalB;
+  if(sum===0){
+    document.getElementById('sbl-odds-a').value='2.0';
+    document.getElementById('sbl-odds-b').value='2.0';
+    alert$('sb-alert','No recent data for either agent — defaulted to even odds (2.0x each).','info');
+    return;
+  }
+  // higher recent performer gets lower payout odds (favorite), other gets higher (underdog)
+  const probA=totalA/sum, probB=totalB/sum;
+  const oddsA=Math.max(1.2,Math.min(5,Math.round((1/Math.max(probA,0.1))*10)/10));
+  const oddsB=Math.max(1.2,Math.min(5,Math.round((1/Math.max(probB,0.1))*10)/10));
+  document.getElementById('sbl-odds-a').value=oddsA;
+  document.getElementById('sbl-odds-b').value=oddsB;
+  alert$('sb-alert',`Suggested odds based on last 4 weeks: Agent A ${oddsA}x, Agent B ${oddsB}x. Feel free to adjust before creating.`,'info');
+}
+
+async function createBetLine(){
+  if(!sbCurrentBettor||sbCurrentBettor.type!=='manager')return;
+  const type=document.getElementById('sbl-type').value;
+  const title=document.getElementById('sbl-title').value.trim();
+  const description=document.getElementById('sbl-desc').value.trim();
+  const period=document.getElementById('sbl-period').value;
+  alert$('sb-alert','','');
+  if(!title){alert$('sb-alert','Enter a title for this line.','error');return;}
+  let payload={type,title,description,period,status:'open',created_by:sbCurrentBettor.name};
+  if(type==='head_to_head'){
+    const selA=document.getElementById('sbl-agent-a'),selB=document.getElementById('sbl-agent-b');
+    const agentAId=selA.value,agentBId=selB.value;
+    if(!agentAId||!agentBId||agentAId===agentBId){alert$('sb-alert','Choose two different agents.','error');return;}
+    payload.agent_a_id=agentAId;payload.agent_a_name=selA.options[selA.selectedIndex].dataset.name;
+    payload.agent_b_id=agentBId;payload.agent_b_name=selB.options[selB.selectedIndex].dataset.name;
+    payload.odds_a=parseFloat(document.getElementById('sbl-odds-a').value)||2.0;
+    payload.odds_b=parseFloat(document.getElementById('sbl-odds-b').value)||2.0;
+  }else if(type==='over_under'){
+    const threshold=parseFloat(document.getElementById('sbl-threshold').value);
+    if(isNaN(threshold)||threshold<=0){alert$('sb-alert','Enter a valid threshold amount.','error');return;}
+    payload.threshold=threshold;
+    payload.odds_over=parseFloat(document.getElementById('sbl-odds-over').value)||2.0;
+    payload.odds_under=parseFloat(document.getElementById('sbl-odds-under').value)||2.0;
+  }else if(type==='prop'){
+    payload.odds_yes=parseFloat(document.getElementById('sbl-odds-yes').value)||2.0;
+    payload.odds_no=parseFloat(document.getElementById('sbl-odds-no').value)||2.0;
+  }
+  document.getElementById('sbl-spin').style.display='inline';
+  try{
+    const{error}=await sb.from('bet_lines').insert(payload);
+    if(error)throw error;
+    alert$('sb-alert','Line created! Agents can now place bets.','success');
+    document.getElementById('sbl-title').value='';document.getElementById('sbl-desc').value='';
+    loadSportsbook();
+  }catch(e){alert$('sb-alert','Error creating line.','error');}
+  document.getElementById('sbl-spin').style.display='none';
+}
+
+function lineLabel(line){
+  if(line.type==='head_to_head')return`${esc(line.agent_a_name)} vs ${esc(line.agent_b_name)}`;
+  if(line.type==='over_under')return`Over/Under ${fmt(line.threshold)}`;
+  return'Yes / No';
+}
+function lineSidesHtml(line,forBetting){
+  const click=forBetting?'onclick="openBetModal':'data-noop="1';
+  if(line.type==='head_to_head'){
+    return`<button class="btn btn-primary btn-sm" onclick="openBetModal('${esc(line.id)}','a','${esc(line.agent_a_name)} wins','${line.odds_a}')">${esc(line.agent_a_name)} (${line.odds_a}x)</button>
+      <button class="btn btn-orange btn-sm" onclick="openBetModal('${esc(line.id)}','b','${esc(line.agent_b_name)} wins','${line.odds_b}')">${esc(line.agent_b_name)} (${line.odds_b}x)</button>`;
+  }else if(line.type==='over_under'){
+    return`<button class="btn btn-primary btn-sm" onclick="openBetModal('${esc(line.id)}','over','Over ${fmt(line.threshold)}','${line.odds_over}')">Over (${line.odds_over}x)</button>
+      <button class="btn btn-orange btn-sm" onclick="openBetModal('${esc(line.id)}','under','Under ${fmt(line.threshold)}','${line.odds_under}')">Under (${line.odds_under}x)</button>`;
+  }else{
+    return`<button class="btn btn-primary btn-sm" onclick="openBetModal('${esc(line.id)}','yes','Yes','${line.odds_yes}')">Yes (${line.odds_yes}x)</button>
+      <button class="btn btn-orange btn-sm" onclick="openBetModal('${esc(line.id)}','no','No','${line.odds_no}')">No (${line.odds_no}x)</button>`;
+  }
+}
+
+async function loadOpenLines(){
+  const{data:lines}=await sb.from('bet_lines').select('*').eq('status','open').order('created_at',{ascending:false});
+  const el=document.getElementById('sb-open-lines');
+  if(!lines||!lines.length){el.innerHTML='<div class="empty">No open lines right now — check back soon!</div>';return;}
+  el.innerHTML=lines.map(line=>`<div class="entry-row">
+    <div class="flex-between" style="margin-bottom:6px">
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(line.title)}</div>
+        <div style="font-size:11px;color:var(--muted)">${lineLabel(line)} · Settles on ${line.period==='week'?'week-to-date':'today\\'s'} commission</div>
+      </div>
+      <span class="badge badge-pending">OPEN</span>
+    </div>
+    ${line.description?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${esc(line.description)}</div>`:''}
+    <div class="flex" style="gap:8px;flex-wrap:wrap">${lineSidesHtml(line,true)}</div>
+  </div>`).join('');
+}
+
+let pendingBet={lineId:null,side:null};
+async function openBetModal(lineId,side,sideLabel,odds){
+  if(!sbCurrentBettor){alert('Sign in first.');return;}
+  pendingBet={lineId,side};
+  document.getElementById('bm-line-id').value=lineId;
+  document.getElementById('bm-side').value=side;
+  document.getElementById('bm-side-display').textContent=`Betting on: ${sideLabel} — payout ${odds}x`;
+  const wallet=await getBettorWallet(sbCurrentBettor);
+  const coins=wallet?Number(wallet.coins)||0:0;
+  document.getElementById('bm-balance-note').textContent=`Your balance: ${coins} Mike Coins · Max bet: ${Math.floor(coins*MAX_BET_PCT)} (50% cap)`;
+  document.getElementById('bm-amount').value='';
+  document.getElementById('bet-modal').classList.add('open');
+}
+function closeBetModal(){document.getElementById('bet-modal').classList.remove('open');}
+
+async function confirmBet(){
+  if(!sbCurrentBettor)return;
+  const lineId=document.getElementById('bm-line-id').value;
+  const side=document.getElementById('bm-side').value;
+  const amount=parseFloat(document.getElementById('bm-amount').value);
+  if(isNaN(amount)||amount<=0){alert('Enter a valid bet amount.');return;}
+  const wallet=await getBettorWallet(sbCurrentBettor);
+  const coins=wallet?Number(wallet.coins)||0:0;
+  if(amount>coins){alert('You don\\'t have enough Mike Coins for that bet.');return;}
+  const maxBet=Math.floor(coins*MAX_BET_PCT);
+  if(amount>maxBet){alert(`Max bet is 50% of your balance: ${maxBet} Mike Coins.`);return;}
+  const{data:line}=await sb.from('bet_lines').select('*').eq('id',lineId).single();
+  if(!line||line.status!=='open'){alert('This line is no longer open.');closeBetModal();loadSportsbook();return;}
+  let odds=2.0;
+  if(side==='a')odds=line.odds_a;else if(side==='b')odds=line.odds_b;
+  else if(side==='over')odds=line.odds_over;else if(side==='under')odds=line.odds_under;
+  else if(side==='yes')odds=line.odds_yes;else if(side==='no')odds=line.odds_no;
+  try{
+    await sb.from('bets').insert({line_id:lineId,bettor_type:sbCurrentBettor.type,bettor_id:sbCurrentBettor.id,bettor_name:sbCurrentBettor.name,side,amount,odds_at_bet:odds,status:'pending'});
+    await setBettorCoins(sbCurrentBettor,coins-amount);
+    closeBetModal();
+    alert$('sb-alert',`Bet placed: ${amount} Mike Coins!`,'success');
+    loadSportsbook();
+  }catch(e){alert$('sb-alert','Error placing bet.','error');}
+}
+
+async function loadMyBets(){
+  if(!sbCurrentBettor)return;
+  const{data:bets}=await sb.from('bets').select('*,bet_lines(title,type)').eq('bettor_id',sbCurrentBettor.id).order('created_at',{ascending:false}).limit(25);
+  const el=document.getElementById('sb-my-bets');
+  if(!bets||!bets.length){el.innerHTML='<div class="empty">No bets placed yet</div>';return;}
+  el.innerHTML=bets.map(b=>{
+    const statusColor=b.status==='won'?'badge-approved':b.status==='lost'?'badge-rejected':'badge-pending';
+    const payoutTxt=b.status==='won'?`+${Number(b.payout).toLocaleString()} coins`:b.status==='lost'?`-${Number(b.amount).toLocaleString()} coins`:`${b.amount} coins wagered`;
+    return`<div class="entry-row flex-between">
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700">${esc(b.bet_lines?.title||'Bet')}</div>
+        <div style="font-size:11px;color:var(--muted)">Side: ${esc(b.side.toUpperCase())} · ${payoutTxt}</div>
+      </div>
+      <span class="badge ${statusColor}">${b.status}</span>
+    </div>`;
+  }).join('');
+}
+
+async function loadBettorLeaderboard(){
+  const{data:bets}=await sb.from('bets').select('bettor_name,status,payout,amount').in('status',['won','lost']);
+  const el=document.getElementById('sb-bettor-leaderboard');
+  if(!bets||!bets.length){el.innerHTML='<div class="empty">No settled bets yet</div>';return;}
+  const net={};
+  bets.forEach(b=>{
+    if(!net[b.bettor_name])net[b.bettor_name]=0;
+    if(b.status==='won')net[b.bettor_name]+=(Number(b.payout)-Number(b.amount));
+    else net[b.bettor_name]-=Number(b.amount);
+  });
+  const ranked=Object.entries(net).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  el.innerHTML=ranked.map(([name,net],i)=>`<div class="entry-row flex-between">
+    <div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:800;color:var(--gold);width:24px">${i+1}</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;text-transform:uppercase">${esc(name)}</span></div>
+    <span style="font-weight:700;color:${net>=0?'#4dd68c':'#f07070'}">${net>=0?'+':''}${net.toLocaleString()} coins</span>
+  </div>`).join('')||'<div class="empty">No settled bets yet</div>';
+}
+
+// ── MANAGER: VIEW + SETTLE LINES ──
+async function loadManagerLines(){
+  const{data:lines}=await sb.from('bet_lines').select('*').order('created_at',{ascending:false}).limit(20);
+  const el=document.getElementById('sb-admin-lines-list');
+  if(!lines||!lines.length){el.innerHTML='<div class="empty">No lines created yet</div>';return;}
+  el.innerHTML=lines.map(line=>{
+    const isOpen=line.status==='open';
+    const isSettled=line.status==='settled';
+    let settleButtons='';
+    if(isOpen){
+      if(line.type==='head_to_head')settleButtons=`<button class="btn btn-green btn-sm" onclick="settleLine('${esc(line.id)}','a')">${esc(line.agent_a_name)} won</button><button class="btn btn-green btn-sm" onclick="settleLine('${esc(line.id)}','b')">${esc(line.agent_b_name)} won</button>`;
+      else if(line.type==='over_under')settleButtons=`<button class="btn btn-green btn-sm" onclick="settleLine('${esc(line.id)}','over')">Over won</button><button class="btn btn-green btn-sm" onclick="settleLine('${esc(line.id)}','under')">Under won</button>`;
+      else settleButtons=`<button class="btn btn-green btn-sm" onclick="settleLine('${esc(line.id)}','yes')">Yes won</button><button class="btn btn-green btn-sm" onclick="settleLine('${esc(line.id)}','no')">No won</button>`;
+      settleButtons+=`<button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="cancelLine('${esc(line.id)}')">Cancel & refund</button>`;
+    }
+    return`<div class="entry-row">
+      <div class="flex-between" style="margin-bottom:6px">
+        <div><div style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700">${esc(line.title)}</div><div style="font-size:11px;color:var(--muted)">${lineLabel(line)}</div></div>
+        <span class="badge ${isOpen?'badge-pending':isSettled?'badge-approved':'badge-rejected'}">${line.status}</span>
+      </div>
+      ${isSettled?`<div style="font-size:12px;color:var(--muted)">Winner: ${esc(line.winning_side)} ${line.settlement_note?'· '+esc(line.settlement_note):''}</div>`:''}
+      ${isOpen?`<div class="flex" style="gap:6px;flex-wrap:wrap">${settleButtons}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+async function settleLine(lineId,winningSide){
+  if(!confirm('Settle this line and pay out winners? This cannot be undone.'))return;
+  try{
+    const{data:line}=await sb.from('bet_lines').select('*').eq('id',lineId).single();
+    if(!line)return;
+    const{data:lineBets}=await sb.from('bets').select('*').eq('line_id',lineId).eq('status','pending');
+    for(const bet of(lineBets||[])){
+      const won=bet.side===winningSide;
+      const payout=won?Math.round(bet.amount*bet.odds_at_bet):0;
+      await sb.from('bets').update({status:won?'won':'lost',payout:won?payout:0}).eq('id',bet.id);
+      if(won){
+        const bettor={type:bet.bettor_type,id:bet.bettor_id};
+        const wallet=await getBettorWallet(bettor);
+        const current=wallet?Number(wallet.coins)||0:0;
+        await setBettorCoins(bettor,current+payout);
+      }
+    }
+    await sb.from('bet_lines').update({status:'settled',winning_side:winningSide,settled_at:new Date().toISOString()}).eq('id',lineId);
+    alert$('sb-alert','Line settled and payouts distributed!','success');
+    loadSportsbook();
+  }catch(e){alert$('sb-alert','Error settling line.','error');}
+}
+
+async function cancelLine(lineId){
+  if(!confirm('Cancel this line and refund all bets?'))return;
+  try{
+    const{data:lineBets}=await sb.from('bets').select('*').eq('line_id',lineId).eq('status','pending');
+    for(const bet of(lineBets||[])){
+      const bettor={type:bet.bettor_type,id:bet.bettor_id};
+      const wallet=await getBettorWallet(bettor);
+      const current=wallet?Number(wallet.coins)||0:0;
+      await setBettorCoins(bettor,current+Number(bet.amount));
+      await sb.from('bets').update({status:'refunded'}).eq('id',bet.id);
+    }
+    await sb.from('bet_lines').update({status:'cancelled'}).eq('id',lineId);
+    alert$('sb-alert','Line cancelled, all bets refunded.','info');
+    loadSportsbook();
+  }catch(e){alert$('sb-alert','Error cancelling line.','error');}
+}
+
+document.getElementById('bet-modal').addEventListener('click',function(e){if(e.target===this)closeBetModal();});
 
 // ── MANAGER SELECT ──
 function selectMgr(btn, username, name){
@@ -768,7 +1229,7 @@ async function loadAdmin(){
   const totalAmt=approved.reduce((s,c)=>s+Number(c.amount),0);
   const pending=comms.filter(c=>c.status==='pending').length;
   const pill=document.getElementById('hdr-pcnt');pill.textContent=pending;pill.style.display=pending>0?'inline':'none';
-  document.getElementById('admin-stats').innerHTML=sCard('Today approved',fmt(todayAmt),'var(--orange)')+sCard('Week to date',fmt(weekAmt),'var(--gold)')+sCard('All time',fmt(totalAmt),'var(--green3)')+sCard('Pending',pending,pending>0?'var(--orange)':'var(--muted)');
+  document.getElementById('admin-stats').innerHTML=sCard('Today approved',fmt(todayAmt),'var(--orange)')+sCard('Week to date',fmt(weekAmt),'var(--gold)')+sCard('All time',fmt(totalAmt),'var(--green3)')+sCard('Total sales',approved.length,'var(--gold)')+sCard('Pending',pending,pending>0?'var(--orange)':'var(--muted)');
   adminTab('pending');
 }
 
@@ -801,18 +1262,41 @@ function bulkClear(){
   document.querySelectorAll('.bulk-check').forEach(cb=>cb.checked=false);
   updateBulkBar();
 }
+// ── MIKE COINS: award +10 per approved sale ──
+async function awardSaleCoins(agentId,count){
+  if(!agentId||!count)return;
+  try{
+    const{data:agent}=await sb.from('agents').select('coins').eq('id',agentId).single();
+    const current=agent?Number(agent.coins)||0:0;
+    await sb.from('agents').update({coins:current+(10*count)}).eq('id',agentId);
+  }catch(e){/* non-critical, ignore */}
+}
+
 async function bulkApprove(){
   if(!selectedPendingIds.size)return;
   if(!confirm(`Approve ${selectedPendingIds.size} selected commission(s)?`))return;
   const ids=[...selectedPendingIds];
   try{
+    const allComms=await getAllComms();
+    const byAgent={};
+    ids.forEach(id=>{const c=allComms.find(x=>x.id===id);if(c)byAgent[c.agent_id]=(byAgent[c.agent_id]||0)+1;});
     await Promise.all(ids.map(id=>updateComm(id,{status:'approved',approved_at:new Date().toISOString()})));
-    alert$('admin-alert',`${ids.length} commission(s) approved!`,'success');
+    await Promise.all(Object.entries(byAgent).map(([agentId,count])=>awardSaleCoins(agentId,count)));
+    alert$('admin-alert',`${ids.length} commission(s) approved! Mike Coins awarded.`,'success');
     loadAdmin();
   }catch(e){alert$('admin-alert','Error approving some commissions.','error');}
 }
 
-async function approveComm(id){try{await updateComm(id,{status:'approved',approved_at:new Date().toISOString()});alert$('admin-alert','Commission approved!','success');loadAdmin();}catch(e){alert$('admin-alert','Error approving.','error');}}
+async function approveComm(id){
+  try{
+    const allComms=await getAllComms();
+    const c=allComms.find(x=>x.id===id);
+    await updateComm(id,{status:'approved',approved_at:new Date().toISOString()});
+    if(c)await awardSaleCoins(c.agent_id,1);
+    alert$('admin-alert','Commission approved! +10 Mike Coins awarded.','success');
+    loadAdmin();
+  }catch(e){alert$('admin-alert','Error approving.','error');}
+}
 async function rejectComm(id){try{await updateComm(id,{status:'rejected'});alert$('admin-alert','Commission rejected.','error');loadPending();}catch(e){alert$('admin-alert','Error rejecting.','error');}}
 async function deleteComm(id,source){if(!confirm('Delete this commission permanently?'))return;try{await deleteCommDB(id);alert$('admin-alert','Deleted.','success');if(source==='pending')loadAdmin();else loadAll();}catch(e){alert$('admin-alert','Error deleting.','error');}}
 
@@ -840,8 +1324,9 @@ async function adminAddComm(){
   document.getElementById('ac-spin').style.display='inline';
   try{
     await insertComm({agent_id:agentId,agent_name:agentName,amount,note:note?'[Admin] '+note:'[Admin entry]',status:'approved',approved_at:new Date().toISOString()});
+    await awardSaleCoins(agentId,1);
     document.getElementById('ac-amount').value='';document.getElementById('ac-note').value='';sel.value='';
-    alert$('admin-comm-alert',agentName+' — '+fmt(amount)+' added!','success');loadAdmin();
+    alert$('admin-comm-alert',agentName+' — '+fmt(amount)+' added! +10 Mike Coins awarded.','success');loadAdmin();
   }catch(e){alert$('admin-comm-alert','Error adding.','error');}
   document.getElementById('ac-spin').style.display='none';
 }
@@ -888,6 +1373,63 @@ function filterAllEntries(){
   renderAllEntries(filtered);
 }
 
+// ── CSV EXPORT (commissions + agent sale summary + bet history, one file) ──
+function csvEscape(v){
+  if(v===null||v===undefined)return'';
+  const s=String(v);
+  if(s.includes(',')||s.includes('"')||s.includes('\n'))return'"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+function csvRow(arr){return arr.map(csvEscape).join(',');}
+
+async function exportAllToCSV(){
+  try{
+    const[comms,agents]=await Promise.all([getAllComms(),getAgents()]);
+    const{data:bets}=await sb.from('bets').select('*,bet_lines(title,type)').order('created_at',{ascending:false});
+
+    const lines=[];
+
+    // SECTION 1: All commission submissions
+    lines.push('=== COMMISSIONS ===');
+    lines.push(csvRow(['Agent','Amount','Status','Note','Submitted At','Approved At']));
+    comms.forEach(c=>{
+      lines.push(csvRow([c.agent_name,c.amount,c.status,c.note||'',new Date(c.created_at).toLocaleString(),c.approved_at?new Date(c.approved_at).toLocaleString():'']));
+    });
+    lines.push('');
+
+    // SECTION 2: Agent summary — sales count + commission totals + coins
+    lines.push('=== AGENT SUMMARY ===');
+    lines.push(csvRow(['Agent','Total Sales (Approved)','Total Commission (Approved)','Pending Sales','Mike Coins Balance']));
+    agents.forEach(a=>{
+      const mine=comms.filter(c=>c.agent_id===a.id);
+      const approved=mine.filter(c=>c.status==='approved');
+      const pending=mine.filter(c=>c.status==='pending');
+      const totalAmt=approved.reduce((s,c)=>s+Number(c.amount),0);
+      lines.push(csvRow([a.name,approved.length,totalAmt.toFixed(2),pending.length,a.coins||0]));
+    });
+    lines.push('');
+
+    // SECTION 3: Sportsbook bet history
+    lines.push('=== SPORTSBOOK BET HISTORY ===');
+    lines.push(csvRow(['Bettor','Type','Line','Side','Amount Wagered','Odds','Status','Payout','Placed At']));
+    (bets||[]).forEach(b=>{
+      lines.push(csvRow([b.bettor_name,b.bettor_type,b.bet_lines?.title||'',b.side,b.amount,b.odds_at_bet,b.status,b.payout||0,new Date(b.created_at).toLocaleString()]));
+    });
+
+    const csvContent=lines.join('\n');
+    const blob=new Blob([csvContent],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`FHE_Scoreboard_Export_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert$('admin-alert','CSV exported! Check your downloads.','success');
+  }catch(e){alert$('admin-alert','Error exporting CSV.','error');}
+}
+
 document.getElementById('edit-modal').addEventListener('click',function(e){if(e.target===this)closeEdit();});
 document.getElementById('al-pin').addEventListener('keydown',e=>{if(e.key==='Enter')agentLogin();});
 document.getElementById('adl-pass').addEventListener('keydown',e=>{if(e.key==='Enter')adminLogin();});
@@ -899,7 +1441,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();con
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents see a "refresh now" banner
 // instead of getting silently served stale code.
-const APP_VERSION='2026-06-30-002';
+const APP_VERSION='2026-06-30-004';
 let updateBannerShown=false;
 async function checkForUpdate(){
   if(updateBannerShown)return;
