@@ -489,7 +489,7 @@ select option{background:#020802}
         <div class="form-group"><label class="form-label">Username</label><input type="text" id="adl-user" placeholder="admin"></div>
         <div class="form-group"><label class="form-label">Password / PIN</label><input type="password" id="adl-pass" placeholder="Password or PIN"></div>
         <button class="btn btn-primary btn-full" onclick="adminLogin()"><span id="adl-spin" style="display:none"><span class="spinner"></span></span>Sign In</button>
-        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:10px">Managers: select your name above then enter PIN 12985</div>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:10px">Managers: select your name above then enter your password</div>
       </div>
     </div>
   </div>
@@ -591,39 +591,23 @@ const sb = supabase.createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyYWxnYXNrZmt0Y3lucGR4amhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NTU3NjUsImV4cCI6MjA5ODMzMTc2NX0.XqtIEprNHOZgXbI7hvn5O1OENQeLzbx5ZmvW9gV206E'
 );
 
-// ── ADMIN/MANAGER CREDENTIALS ──
-const ADMINS = [
-  { username:'admin',           password:'Admin1234!', name:'Admin' },
-  { username:'joshuadiaz',      password:'12985',      name:'Joshua Diaz' },
-  { username:'yamilljulian',    password:'12985',      name:'Yamill Julian' },
-  { username:'jordankyles',     password:'12985',      name:'Jordan Kyles' },
-  { username:'michaelbregio',   password:'12985',      name:'Michael Bregio' },
-  { username:'markcaraher',     password:'12985',      name:'Mark Caraher' },
-  { username:'michaelsanguily', password:'12985',      name:'Michael Sanguily' },
-];
-let currentAdmin=null, selectedMgrUsername=null;
+// ── AUTH STATE ── (credentials are verified server-side via RPC on every call; nothing is trusted client-side)
+let currentAdmin=null; // {username,password,name} — password kept in memory only, re-sent per admin RPC call
+let selectedMgrUsername=null;
+let currentAgent=null; // {id,name,coins,pin} — pin kept in memory only, re-sent per agent RPC call
+
+async function rpc(fn,args){
+  const{data,error}=await sb.rpc(fn,args);
+  if(error)throw error;
+  return data;
+}
 
 // ── DATE HELPERS ──
-function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d.toISOString();}
-function startOfWeek(){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());return d.toISOString();}
-
-// ── DB ──
-async function getAgents(){const{data}=await sb.from('agents').select('*').order('name');return data||[];}
-async function getAllComms(){const{data}=await sb.from('commissions').select('*').order('created_at',{ascending:false});return data||[];}
-async function getApprovedByPeriod(period){
-  let q=sb.from('commissions').select('*').eq('status','approved');
-  if(period==='today')q=q.gte('approved_at',startOfToday());
-  else if(period==='week')q=q.gte('approved_at',startOfWeek());
-  const{data}=await q;return data||[];
-}
-async function insertAgent(a){const{data,error}=await sb.from('agents').insert(a).select().single();if(error)throw error;return data;}
-async function insertComm(c){const{data,error}=await sb.from('commissions').insert(c).select().single();if(error)throw error;return data;}
-async function updateComm(id,u){const{error}=await sb.from('commissions').update(u).eq('id',id);if(error)throw error;}
-async function deleteAgent(id){const{error}=await sb.from('agents').delete().eq('id',id);if(error)throw error;}
-async function deleteCommDB(id){const{error}=await sb.from('commissions').delete().eq('id',id);if(error)throw error;}
+function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d;}
+function startOfWeek(){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());return d;}
 
 // ── APP STATE ──
-let currentAgent=null,adminAuthed=false,refreshTimer=null,currentPeriod='today',prevRankings={},prevTop=null;
+let adminAuthed=false,refreshTimer=null,currentPeriod='today',prevRankings={},prevTop=null;
 
 function fmt(n){return'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});}
 function initials(n){return n.trim().split(/\s+/).map(w=>w[0]).join('').toUpperCase().slice(0,2);}
@@ -719,7 +703,7 @@ async function setAnnouncement(){
   const msg=document.getElementById('announce-input').value.trim();
   if(!msg)return;
   try{
-    await sb.from('announcements').upsert({id:1,message:msg,updated_at:new Date().toISOString()});
+    await rpc('admin_set_announcement',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_message:msg});
     showAnnouncement(msg);
     document.getElementById('announce-input').value='';
     alert$('admin-alert','Announcement posted! All agents will see it.','success');
@@ -727,7 +711,7 @@ async function setAnnouncement(){
 }
 async function clearAnnouncement(){
   try{
-    await sb.from('announcements').upsert({id:1,message:null,updated_at:new Date().toISOString()});
+    await rpc('admin_set_announcement',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_message:null});
     document.getElementById('announce-bar').classList.remove('visible');
     alert$('admin-alert','Announcement cleared.','info');
   }catch(e){alert$('admin-alert','Error clearing announcement.','error');}
@@ -740,16 +724,16 @@ function showAnnouncement(msg){
 // Load announcement from Supabase on page load and every 30s so all agents see it
 async function loadAnnouncement(){
   try{
-    const{data}=await sb.from('announcements').select('message').eq('id',1).single();
-    showAnnouncement(data?.message||null);
+    const msg=await rpc('get_announcement',{});
+    showAnnouncement(msg||null);
   }catch(e){}
 }
 loadAnnouncement();
 setInterval(loadAnnouncement,30000);
 
-// ── STREAK / PERSONAL BEST ──
+// ── STREAK / PERSONAL BEST ── (input rows are already approved-only: {agent_id,amount,approved_at})
 function calcStreak(comms,agentId){
-  const approved=comms.filter(c=>c.agent_id===agentId&&c.status==='approved'&&c.approved_at);
+  const approved=comms.filter(c=>c.agent_id===agentId&&c.approved_at);
   if(!approved.length)return 0;
   const days=new Set(approved.map(c=>c.approved_at.slice(0,10)));
   let streak=0;const today=new Date();
@@ -757,7 +741,7 @@ function calcStreak(comms,agentId){
   return streak;
 }
 function calcPersonalBest(comms,agentId){
-  const approved=comms.filter(c=>c.agent_id===agentId&&c.status==='approved'&&c.approved_at);
+  const approved=comms.filter(c=>c.agent_id===agentId&&c.approved_at);
   if(!approved.length)return{bestDay:0,bestWeek:0};
   const byDay={};approved.forEach(c=>{const d=c.approved_at.slice(0,10);byDay[d]=(byDay[d]||0)+Number(c.amount);});
   const bestDay=Math.max(...Object.values(byDay));
@@ -774,8 +758,15 @@ function setPeriod(p){
   loadBoard();
 }
 
+function filterByPeriod(rows,period){
+  if(period==='all')return rows;
+  const since=period==='today'?startOfToday():startOfWeek();
+  return rows.filter(c=>c.approved_at&&new Date(c.approved_at)>=since);
+}
+
 async function loadBoard(){
-  const[agents,periodComms]=await Promise.all([getAgents(),getApprovedByPeriod(currentPeriod)]);
+  const[agents,feed]=await Promise.all([rpc('get_agents_board',{}),rpc('get_public_commission_feed',{})]);
+  const periodComms=filterByPeriod(feed,currentPeriod);
   const totals={},counts={};agents.forEach(a=>{totals[a.name]=0;counts[a.name]=0;});
   periodComms.forEach(c=>{
     if(totals[c.agent_name]===undefined){totals[c.agent_name]=0;counts[c.agent_name]=0;}
@@ -792,10 +783,9 @@ async function loadBoard(){
   if(newTop&&prevTop&&newTop!==prevTop)fireConfetti();
   prevTop=newTop;
   // Week-to-date totals + counts per agent, always computed regardless of selected period
-  const weekComms=await getApprovedByPeriod('week');
+  const weekComms=filterByPeriod(feed,'week');
   const weekTotals={},weekCounts={};
   weekComms.forEach(c=>{weekTotals[c.agent_name]=(weekTotals[c.agent_name]||0)+Number(c.amount);weekCounts[c.agent_name]=(weekCounts[c.agent_name]||0)+1;});
-  const allCommsFull=await getAllComms();
   const agentMap={};agents.forEach(a=>{agentMap[a.name]=a.id;});
   document.getElementById('tv-updated').textContent='Updated '+new Date().toLocaleTimeString();
   const pLabel={today:'Today',week:'This week',all:'All time'}[currentPeriod];
@@ -812,7 +802,7 @@ async function loadBoard(){
     let moveHtml='';
     if(prevRankings[name]!==undefined&&amt>0){const diff=prevRankings[name]-i;if(diff>0)moveHtml=`<span class="move-up">▲${diff}</span>`;else if(diff<0)moveHtml=`<span class="move-down">▼${Math.abs(diff)}</span>`;}
     const agentId=agentMap[name];
-    const streak=agentId?calcStreak(allCommsFull,agentId):0;
+    const streak=agentId?calcStreak(feed,agentId):0;
     const streakHtml=streak>=2?`<span class="tv-streak">🔥${streak}d</span>`:'';
     const wtdAmt=weekTotals[name]||0;
     const wtdCount=weekCounts[name]||0;
@@ -829,11 +819,11 @@ async function agentLogin(){
   alert$('al-alert','','');
   if(!name||!pin){alert$('al-alert','Enter your name and PIN.','error');return;}
   document.getElementById('al-spin').style.display='inline';
-  const agents=await getAgents();
+  let agent=null;
+  try{const rows=await rpc('verify_agent_login',{p_name:name,p_pin:pin});agent=rows&&rows[0]?rows[0]:null;}catch(e){}
   document.getElementById('al-spin').style.display='none';
-  const agent=agents.find(a=>a.name.toLowerCase()===name.toLowerCase()&&a.pin===pin);
   if(!agent){alert$('al-alert','Name or PIN not found. Contact your admin.','error');return;}
-  currentAgent=agent;
+  currentAgent={...agent,pin};
   document.getElementById('agent-welcome').textContent='Welcome, '+agent.name;
   document.getElementById('agent-login-section').style.display='none';
   document.getElementById('agent-portal-section').style.display='block';
@@ -843,9 +833,9 @@ function agentLogout(){currentAgent=null;document.getElementById('agent-login-se
 
 async function loadAgentView(){
   if(!currentAgent)return;
-  const comms=await getAllComms(),mine=comms.filter(c=>c.agent_id===currentAgent.id),approved=mine.filter(c=>c.status==='approved');
-  const todayStart=new Date();todayStart.setHours(0,0,0,0);
-  const weekStart=new Date();weekStart.setHours(0,0,0,0);weekStart.setDate(weekStart.getDate()-weekStart.getDay());
+  const mine=await rpc('get_my_commissions',{p_agent_id:currentAgent.id,p_pin:currentAgent.pin});
+  const approved=mine.filter(c=>c.status==='approved');
+  const todayStart=startOfToday(),weekStart=startOfWeek();
   const todayApproved=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart);
   const weekApproved=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=weekStart);
   const todayAmt=todayApproved.reduce((s,c)=>s+Number(c.amount),0);
@@ -853,8 +843,9 @@ async function loadAgentView(){
   const weekAmt=weekApproved.reduce((s,c)=>s+Number(c.amount),0);
   const weekCount=weekApproved.length;
   const totalAmt=approved.reduce((s,c)=>s+Number(c.amount),0);
-  const{bestDay,bestWeek}=calcPersonalBest(comms,currentAgent.id);
-  const streak=calcStreak(comms,currentAgent.id);
+  const approvedForCalc=approved.map(c=>({agent_id:currentAgent.id,amount:c.amount,approved_at:c.approved_at}));
+  const{bestDay,bestWeek}=calcPersonalBest(approvedForCalc,currentAgent.id);
+  const streak=calcStreak(approvedForCalc,currentAgent.id);
   document.getElementById('agent-pb').innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:.5rem">${bestDay>0?`<div class="pb-badge">🏅 Best day: ${fmt(bestDay)}</div>`:''} ${bestWeek>0?`<div class="pb-badge">🏆 Best week: ${fmt(bestWeek)}</div>`:''} ${streak>=2?`<div class="pb-badge">🔥 ${streak}-day streak</div>`:''}</div>`;
   const todaySaleLabel=todayCount===1?'sale':'sales';
   const weekSaleLabel=weekCount===1?'sale':'sales';
@@ -874,51 +865,26 @@ async function submitComm(){
   alert$('submit-alert','','');
   if(isNaN(amount)||amount<=0){alert$('submit-alert','Enter a valid dollar amount.','error');return;}
   document.getElementById('cm-spin').style.display='inline';
-  try{await insertComm({agent_id:currentAgent.id,agent_name:currentAgent.name,amount,note,status:'pending'});document.getElementById('cm-amount').value='';document.getElementById('cm-note').value='';alert$('submit-alert','Submitted! Pending admin approval.','success');loadAgentView();}
+  try{await rpc('submit_commission',{p_agent_id:currentAgent.id,p_pin:currentAgent.pin,p_amount:amount,p_note:note});document.getElementById('cm-amount').value='';document.getElementById('cm-note').value='';alert$('submit-alert','Submitted! Pending admin approval.','success');loadAgentView();}
   catch(e){alert$('submit-alert','Error submitting.','error');}
   document.getElementById('cm-spin').style.display='none';
 }
 
 // ══════════════════ SPORTSBOOK ══════════════════
-const HOUSE_CREDIT_AMOUNT=5;
-const HOUSE_CREDIT_THRESHOLD=0;
-const MAX_BET_PCT=0.5; // max 50% of balance per bet
-let sbCurrentBettor=null; // {type:'agent'|'manager', id, name}
+let sbCurrentBettor=null; // {type:'agent'|'manager', id, name, pin, adminPassword}
 
 function getCurrentBettor(){
-  if(currentAgent)return{type:'agent',id:currentAgent.id,name:currentAgent.name};
-  if(adminAuthed&&currentAdmin)return{type:'manager',id:currentAdmin.username,name:currentAdmin.name};
+  if(currentAgent)return{type:'agent',id:currentAgent.id,name:currentAgent.name,pin:currentAgent.pin,adminPassword:null};
+  if(adminAuthed&&currentAdmin)return{type:'manager',id:currentAdmin.username,name:currentAdmin.name,pin:null,adminPassword:currentAdmin.password};
   return null;
 }
 
 async function getBettorWallet(bettor){
-  if(bettor.type==='agent'){
-    const{data}=await sb.from('agents').select('coins,last_house_credit_at').eq('id',bettor.id).single();
-    return data;
-  }else{
-    const{data}=await sb.from('managers_wallet').select('coins,last_house_credit_at').eq('username',bettor.id).single();
-    return data;
-  }
-}
-async function setBettorCoins(bettor,coins){
-  if(bettor.type==='agent')await sb.from('agents').update({coins}).eq('id',bettor.id);
-  else await sb.from('managers_wallet').update({coins}).eq('username',bettor.id);
+  return await rpc('get_wallet',{p_bettor_type:bettor.type,p_bettor_id:String(bettor.id),p_pin:bettor.pin,p_admin_password:bettor.adminPassword}).then(rows=>rows&&rows[0]?rows[0]:null).catch(()=>null);
 }
 
 async function applyHouseCreditIfNeeded(bettor){
-  const wallet=await getBettorWallet(bettor);
-  if(!wallet)return;
-  const coins=Number(wallet.coins)||0;
-  if(coins>HOUSE_CREDIT_THRESHOLD)return;
-  const last=wallet.last_house_credit_at?new Date(wallet.last_house_credit_at):null;
-  const now=new Date();
-  const isNewDay=!last||last.toDateString()!==now.toDateString();
-  if(isNewDay){
-    const newBal=coins+HOUSE_CREDIT_AMOUNT;
-    await setBettorCoins(bettor,newBal);
-    if(bettor.type==='agent')await sb.from('agents').update({last_house_credit_at:now.toISOString()}).eq('id',bettor.id);
-    else await sb.from('managers_wallet').update({last_house_credit_at:now.toISOString()}).eq('username',bettor.id);
-  }
+  try{await rpc('claim_house_credit',{p_bettor_type:bettor.type,p_bettor_id:String(bettor.id),p_pin:bettor.pin,p_admin_password:bettor.adminPassword});}catch(e){}
 }
 
 async function initSportsbook(){
@@ -953,7 +919,7 @@ async function loadSportsbook(){
 }
 
 async function loadAgentDropdownsForLines(){
-  const agents=await getAgents();
+  const agents=await rpc('get_agents_board',{});
   const opts='<option value="">— Choose —</option>'+agents.map(a=>`<option value="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}</option>`).join('');
   const selA=document.getElementById('sbl-agent-a'),selB=document.getElementById('sbl-agent-b');
   if(selA)selA.innerHTML=opts;
@@ -975,9 +941,10 @@ async function suggestOdds(){
   if(!aId||!bId){alert$('sb-alert','Choose both agents first.','error');return;}
   // Use trailing approved commission (last 2-4 weeks) as a rough performance signal
   const fourWeeksAgo=new Date();fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
-  const{data}=await sb.from('commissions').select('agent_id,amount,approved_at').eq('status','approved').gte('approved_at',fourWeeksAgo.toISOString());
-  const totalA=(data||[]).filter(c=>c.agent_id===aId).reduce((s,c)=>s+Number(c.amount),0);
-  const totalB=(data||[]).filter(c=>c.agent_id===bId).reduce((s,c)=>s+Number(c.amount),0);
+  const feed=await rpc('get_public_commission_feed',{});
+  const recent=feed.filter(c=>c.approved_at&&new Date(c.approved_at)>=fourWeeksAgo);
+  const totalA=recent.filter(c=>c.agent_id===aId).reduce((s,c)=>s+Number(c.amount),0);
+  const totalB=recent.filter(c=>c.agent_id===bId).reduce((s,c)=>s+Number(c.amount),0);
   const sum=totalA+totalB;
   if(sum===0){
     document.getElementById('sbl-odds-a').value='2.0';
@@ -1002,29 +969,34 @@ async function createBetLine(){
   const period=document.getElementById('sbl-period').value;
   alert$('sb-alert','','');
   if(!title){alert$('sb-alert','Enter a title for this line.','error');return;}
-  let payload={type,title,description,period,status:'open',created_by:sbCurrentBettor.name};
+  let agentAId=null,agentAName=null,agentBId=null,agentBName=null;
+  let oddsA=2.0,oddsB=2.0,threshold=null,oddsOver=2.0,oddsUnder=2.0,oddsYes=2.0,oddsNo=2.0;
   if(type==='head_to_head'){
     const selA=document.getElementById('sbl-agent-a'),selB=document.getElementById('sbl-agent-b');
-    const agentAId=selA.value,agentBId=selB.value;
+    agentAId=selA.value;agentBId=selB.value;
     if(!agentAId||!agentBId||agentAId===agentBId){alert$('sb-alert','Choose two different agents.','error');return;}
-    payload.agent_a_id=agentAId;payload.agent_a_name=selA.options[selA.selectedIndex].dataset.name;
-    payload.agent_b_id=agentBId;payload.agent_b_name=selB.options[selB.selectedIndex].dataset.name;
-    payload.odds_a=parseFloat(document.getElementById('sbl-odds-a').value)||2.0;
-    payload.odds_b=parseFloat(document.getElementById('sbl-odds-b').value)||2.0;
+    agentAName=selA.options[selA.selectedIndex].dataset.name;
+    agentBName=selB.options[selB.selectedIndex].dataset.name;
+    oddsA=parseFloat(document.getElementById('sbl-odds-a').value)||2.0;
+    oddsB=parseFloat(document.getElementById('sbl-odds-b').value)||2.0;
   }else if(type==='over_under'){
-    const threshold=parseFloat(document.getElementById('sbl-threshold').value);
+    threshold=parseFloat(document.getElementById('sbl-threshold').value);
     if(isNaN(threshold)||threshold<=0){alert$('sb-alert','Enter a valid threshold amount.','error');return;}
-    payload.threshold=threshold;
-    payload.odds_over=parseFloat(document.getElementById('sbl-odds-over').value)||2.0;
-    payload.odds_under=parseFloat(document.getElementById('sbl-odds-under').value)||2.0;
+    oddsOver=parseFloat(document.getElementById('sbl-odds-over').value)||2.0;
+    oddsUnder=parseFloat(document.getElementById('sbl-odds-under').value)||2.0;
   }else if(type==='prop'){
-    payload.odds_yes=parseFloat(document.getElementById('sbl-odds-yes').value)||2.0;
-    payload.odds_no=parseFloat(document.getElementById('sbl-odds-no').value)||2.0;
+    oddsYes=parseFloat(document.getElementById('sbl-odds-yes').value)||2.0;
+    oddsNo=parseFloat(document.getElementById('sbl-odds-no').value)||2.0;
   }
   document.getElementById('sbl-spin').style.display='inline';
   try{
-    const{error}=await sb.from('bet_lines').insert(payload);
-    if(error)throw error;
+    await rpc('create_bet_line',{
+      p_username:currentAdmin.username,p_password:currentAdmin.password,
+      p_type:type,p_title:title,p_description:description,p_period:period,
+      p_agent_a_id:agentAId,p_agent_a_name:agentAName,p_agent_b_id:agentBId,p_agent_b_name:agentBName,
+      p_odds_a:oddsA,p_odds_b:oddsB,p_threshold:threshold,p_odds_over:oddsOver,p_odds_under:oddsUnder,
+      p_odds_yes:oddsYes,p_odds_no:oddsNo
+    });
     alert$('sb-alert','Line created! Agents can now place bets.','success');
     document.getElementById('sbl-title').value='';document.getElementById('sbl-desc').value='';
     loadSportsbook();
@@ -1052,7 +1024,7 @@ function lineSidesHtml(line,forBetting){
 }
 
 async function loadOpenLines(){
-  const{data:lines}=await sb.from('bet_lines').select('*').eq('status','open').order('created_at',{ascending:false});
+  const lines=await rpc('get_open_lines',{});
   const el=document.getElementById('sb-open-lines');
   if(!lines||!lines.length){el.innerHTML='<div class="empty">No open lines right now — check back soon!</div>';return;}
   el.innerHTML=lines.map(line=>`<div class="entry-row">
@@ -1077,7 +1049,7 @@ async function openBetModal(lineId,side,sideLabel,odds){
   document.getElementById('bm-side-display').textContent=`Betting on: ${sideLabel} — payout ${odds}x`;
   const wallet=await getBettorWallet(sbCurrentBettor);
   const coins=wallet?Number(wallet.coins)||0:0;
-  document.getElementById('bm-balance-note').textContent=`Your balance: ${coins} Mike Coins · Max bet: ${Math.floor(coins*MAX_BET_PCT)} (50% cap)`;
+  document.getElementById('bm-balance-note').textContent=`Your balance: ${coins} Mike Coins · Max bet: ${Math.floor(coins*0.5)} (50% cap)`;
   document.getElementById('bm-amount').value='';
   document.getElementById('bet-modal').classList.add('open');
 }
@@ -1089,29 +1061,27 @@ async function confirmBet(){
   const side=document.getElementById('bm-side').value;
   const amount=parseFloat(document.getElementById('bm-amount').value);
   if(isNaN(amount)||amount<=0){alert('Enter a valid bet amount.');return;}
-  const wallet=await getBettorWallet(sbCurrentBettor);
-  const coins=wallet?Number(wallet.coins)||0:0;
-  if(amount>coins){alert("You don't have enough Mike Coins for that bet.");return;}
-  const maxBet=Math.floor(coins*MAX_BET_PCT);
-  if(amount>maxBet){alert(`Max bet is 50% of your balance: ${maxBet} Mike Coins.`);return;}
-  const{data:line}=await sb.from('bet_lines').select('*').eq('id',lineId).single();
-  if(!line||line.status!=='open'){alert('This line is no longer open.');closeBetModal();loadSportsbook();return;}
-  let odds=2.0;
-  if(side==='a')odds=line.odds_a;else if(side==='b')odds=line.odds_b;
-  else if(side==='over')odds=line.odds_over;else if(side==='under')odds=line.odds_under;
-  else if(side==='yes')odds=line.odds_yes;else if(side==='no')odds=line.odds_no;
   try{
-    await sb.from('bets').insert({line_id:lineId,bettor_type:sbCurrentBettor.type,bettor_id:sbCurrentBettor.id,bettor_name:sbCurrentBettor.name,side,amount,odds_at_bet:odds,status:'pending'});
-    await setBettorCoins(sbCurrentBettor,coins-amount);
+    await rpc('place_bet',{
+      p_bettor_type:sbCurrentBettor.type,p_bettor_id:String(sbCurrentBettor.id),
+      p_pin:sbCurrentBettor.pin,p_admin_password:sbCurrentBettor.adminPassword,
+      p_line_id:lineId,p_side:side,p_amount:amount
+    });
     closeBetModal();
     alert$('sb-alert',`Bet placed: ${amount} Mike Coins!`,'success');
     loadSportsbook();
-  }catch(e){alert$('sb-alert','Error placing bet.','error');}
+  }catch(e){
+    const msg=(e&&e.message)||'';
+    if(msg.includes('insufficient balance'))alert("You don't have enough Mike Coins for that bet.");
+    else if(msg.includes('exceeds max bet'))alert('Max bet is 50% of your balance.');
+    else if(msg.includes('line not open')){alert('This line is no longer open.');closeBetModal();loadSportsbook();}
+    else alert$('sb-alert','Error placing bet.','error');
+  }
 }
 
 async function loadMyBets(){
   if(!sbCurrentBettor)return;
-  const{data:bets}=await sb.from('bets').select('*,bet_lines(title,type)').eq('bettor_id',sbCurrentBettor.id).order('created_at',{ascending:false}).limit(25);
+  const bets=await rpc('get_my_bets',{p_bettor_type:sbCurrentBettor.type,p_bettor_id:String(sbCurrentBettor.id),p_pin:sbCurrentBettor.pin,p_admin_password:sbCurrentBettor.adminPassword}).catch(()=>[]);
   const el=document.getElementById('sb-my-bets');
   if(!bets||!bets.length){el.innerHTML='<div class="empty">No bets placed yet</div>';return;}
   el.innerHTML=bets.map(b=>{
@@ -1119,7 +1089,7 @@ async function loadMyBets(){
     const payoutTxt=b.status==='won'?`+${Number(b.payout).toLocaleString()} coins`:b.status==='lost'?`-${Number(b.amount).toLocaleString()} coins`:`${b.amount} coins wagered`;
     return`<div class="entry-row flex-between">
       <div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700">${esc(b.bet_lines?.title||'Bet')}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700">${esc(b.line_title||'Bet')}</div>
         <div style="font-size:11px;color:var(--muted)">Side: ${esc(b.side.toUpperCase())} · ${payoutTxt}</div>
       </div>
       <span class="badge ${statusColor}">${b.status}</span>
@@ -1128,7 +1098,7 @@ async function loadMyBets(){
 }
 
 async function loadBettorLeaderboard(){
-  const{data:bets}=await sb.from('bets').select('bettor_name,status,payout,amount').in('status',['won','lost']);
+  const bets=await rpc('get_settled_bets_public',{});
   const el=document.getElementById('sb-bettor-leaderboard');
   if(!bets||!bets.length){el.innerHTML='<div class="empty">No settled bets yet</div>';return;}
   const net={};
@@ -1146,7 +1116,7 @@ async function loadBettorLeaderboard(){
 
 // ── MANAGER: VIEW + SETTLE LINES ──
 async function loadManagerLines(){
-  const{data:lines}=await sb.from('bet_lines').select('*').order('created_at',{ascending:false}).limit(20);
+  const lines=await rpc('get_all_lines_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}).catch(()=>[]);
   const el=document.getElementById('sb-admin-lines-list');
   if(!lines||!lines.length){el.innerHTML='<div class="empty">No lines created yet</div>';return;}
   el.innerHTML=lines.map(line=>{
@@ -1173,21 +1143,7 @@ async function loadManagerLines(){
 async function settleLine(lineId,winningSide){
   if(!confirm('Settle this line and pay out winners? This cannot be undone.'))return;
   try{
-    const{data:line}=await sb.from('bet_lines').select('*').eq('id',lineId).single();
-    if(!line)return;
-    const{data:lineBets}=await sb.from('bets').select('*').eq('line_id',lineId).eq('status','pending');
-    for(const bet of(lineBets||[])){
-      const won=bet.side===winningSide;
-      const payout=won?Math.round(bet.amount*bet.odds_at_bet):0;
-      await sb.from('bets').update({status:won?'won':'lost',payout:won?payout:0}).eq('id',bet.id);
-      if(won){
-        const bettor={type:bet.bettor_type,id:bet.bettor_id};
-        const wallet=await getBettorWallet(bettor);
-        const current=wallet?Number(wallet.coins)||0:0;
-        await setBettorCoins(bettor,current+payout);
-      }
-    }
-    await sb.from('bet_lines').update({status:'settled',winning_side:winningSide,settled_at:new Date().toISOString()}).eq('id',lineId);
+    await rpc('settle_bet_line',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_line_id:lineId,p_winning_side:winningSide});
     alert$('sb-alert','Line settled and payouts distributed!','success');
     loadSportsbook();
   }catch(e){alert$('sb-alert','Error settling line.','error');}
@@ -1196,15 +1152,7 @@ async function settleLine(lineId,winningSide){
 async function cancelLine(lineId){
   if(!confirm('Cancel this line and refund all bets?'))return;
   try{
-    const{data:lineBets}=await sb.from('bets').select('*').eq('line_id',lineId).eq('status','pending');
-    for(const bet of(lineBets||[])){
-      const bettor={type:bet.bettor_type,id:bet.bettor_id};
-      const wallet=await getBettorWallet(bettor);
-      const current=wallet?Number(wallet.coins)||0:0;
-      await setBettorCoins(bettor,current+Number(bet.amount));
-      await sb.from('bets').update({status:'refunded'}).eq('id',bet.id);
-    }
-    await sb.from('bet_lines').update({status:'cancelled'}).eq('id',lineId);
+    await rpc('cancel_bet_line',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_line_id:lineId});
     alert$('sb-alert','Line cancelled, all bets refunded.','info');
     loadSportsbook();
   }catch(e){alert$('sb-alert','Error cancelling line.','error');}
@@ -1219,7 +1167,7 @@ function selectMgr(btn, username, name){
   selectedMgrUsername=username;
   document.getElementById('adl-user').value=username;
   document.getElementById('adl-pass').value='';
-  document.getElementById('adl-pass').placeholder='Enter PIN (12985)';
+  document.getElementById('adl-pass').placeholder='Enter your PIN';
   document.getElementById('adl-pass').focus();
 }
 
@@ -1229,11 +1177,11 @@ async function adminLogin(){
   const pass=document.getElementById('adl-pass').value;
   alert$('adl-alert','','');
   document.getElementById('adl-spin').style.display='inline';
-  await new Promise(r=>setTimeout(r,350));
+  let found=null;
+  try{const rows=await rpc('verify_admin_login',{p_username:user,p_password:pass});found=rows&&rows[0]?rows[0]:null;}catch(e){}
   document.getElementById('adl-spin').style.display='none';
-  const found=ADMINS.find(a=>a.username===user&&a.password===pass);
   if(found){
-    currentAdmin=found;adminAuthed=true;
+    currentAdmin={username:found.username,password:pass,name:found.name};adminAuthed=true;
     document.getElementById('admin-login-section').style.display='none';
     document.getElementById('admin-panel-section').style.display='block';
     document.getElementById('admin-panel-title').textContent=found.name==='Admin'?'Admin Panel':found.name+" — Admin Panel";
@@ -1261,9 +1209,9 @@ function adminTab(tab){
 }
 
 async function loadAdmin(){
-  const comms=await getAllComms(),approved=comms.filter(c=>c.status==='approved');
-  const todayStart=new Date();todayStart.setHours(0,0,0,0);
-  const weekStart=new Date();weekStart.setHours(0,0,0,0);weekStart.setDate(weekStart.getDate()-weekStart.getDay());
+  const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password});
+  const approved=comms.filter(c=>c.status==='approved');
+  const todayStart=startOfToday(),weekStart=startOfWeek();
   const todayAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart).reduce((s,c)=>s+Number(c.amount),0);
   const weekAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=weekStart).reduce((s,c)=>s+Number(c.amount),0);
   const totalAmt=approved.reduce((s,c)=>s+Number(c.amount),0);
@@ -1276,7 +1224,8 @@ async function loadAdmin(){
 let selectedPendingIds=new Set();
 
 async function loadPending(){
-  const comms=await getAllComms(),pending=comms.filter(c=>c.status==='pending');
+  const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password});
+  const pending=comms.filter(c=>c.status==='pending');
   document.getElementById('pcnt').textContent=pending.length;
   document.getElementById('hdr-pcnt').textContent=pending.length;
   document.getElementById('hdr-pcnt').style.display=pending.length>0?'inline':'none';
@@ -1302,26 +1251,13 @@ function bulkClear(){
   document.querySelectorAll('.bulk-check').forEach(cb=>cb.checked=false);
   updateBulkBar();
 }
-// ── MIKE COINS: award +10 per approved sale ──
-async function awardSaleCoins(agentId,count){
-  if(!agentId||!count)return;
-  try{
-    const{data:agent}=await sb.from('agents').select('coins').eq('id',agentId).single();
-    const current=agent?Number(agent.coins)||0:0;
-    await sb.from('agents').update({coins:current+(10*count)}).eq('id',agentId);
-  }catch(e){/* non-critical, ignore */}
-}
 
 async function bulkApprove(){
   if(!selectedPendingIds.size)return;
   if(!confirm(`Approve ${selectedPendingIds.size} selected commission(s)?`))return;
   const ids=[...selectedPendingIds];
   try{
-    const allComms=await getAllComms();
-    const byAgent={};
-    ids.forEach(id=>{const c=allComms.find(x=>x.id===id);if(c)byAgent[c.agent_id]=(byAgent[c.agent_id]||0)+1;});
-    await Promise.all(ids.map(id=>updateComm(id,{status:'approved',approved_at:new Date().toISOString()})));
-    await Promise.all(Object.entries(byAgent).map(([agentId,count])=>awardSaleCoins(agentId,count)));
+    await rpc('admin_bulk_approve_commissions',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_ids:ids});
     alert$('admin-alert',`${ids.length} commission(s) approved! Mike Coins awarded.`,'success');
     loadAdmin();
   }catch(e){alert$('admin-alert','Error approving some commissions.','error');}
@@ -1329,28 +1265,25 @@ async function bulkApprove(){
 
 async function approveComm(id){
   try{
-    const allComms=await getAllComms();
-    const c=allComms.find(x=>x.id===id);
-    await updateComm(id,{status:'approved',approved_at:new Date().toISOString()});
-    if(c)await awardSaleCoins(c.agent_id,1);
+    await rpc('admin_approve_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id});
     alert$('admin-alert','Commission approved! +10 Mike Coins awarded.','success');
     loadAdmin();
   }catch(e){alert$('admin-alert','Error approving.','error');}
 }
-async function rejectComm(id){try{await updateComm(id,{status:'rejected'});alert$('admin-alert','Commission rejected.','error');loadPending();}catch(e){alert$('admin-alert','Error rejecting.','error');}}
-async function deleteComm(id,source){if(!confirm('Delete this commission permanently?'))return;try{await deleteCommDB(id);alert$('admin-alert','Deleted.','success');if(source==='pending')loadAdmin();else loadAll();}catch(e){alert$('admin-alert','Error deleting.','error');}}
+async function rejectComm(id){try{await rpc('admin_reject_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id});alert$('admin-alert','Commission rejected.','error');loadPending();}catch(e){alert$('admin-alert','Error rejecting.','error');}}
+async function deleteComm(id,source){if(!confirm('Delete this commission permanently?'))return;try{await rpc('admin_delete_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id});alert$('admin-alert','Deleted.','success');if(source==='pending')loadAdmin();else loadAll();}catch(e){alert$('admin-alert','Error deleting.','error');}}
 
 function openEdit(id,amount,note){document.getElementById('edit-id').value=id;document.getElementById('edit-amount').value=amount;document.getElementById('edit-note').value=note;document.getElementById('edit-modal').classList.add('open');}
 function closeEdit(){document.getElementById('edit-modal').classList.remove('open');}
 async function saveEdit(){
   const id=document.getElementById('edit-id').value,amount=parseFloat(document.getElementById('edit-amount').value),note=document.getElementById('edit-note').value.trim();
   if(isNaN(amount)||amount<=0){alert('Enter a valid amount.');return;}
-  try{await updateComm(id,{amount,note});closeEdit();alert$('admin-alert','Commission updated!','success');loadPending();loadAll();}
+  try{await rpc('admin_edit_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id,p_amount:amount,p_note:note});closeEdit();alert$('admin-alert','Commission updated!','success');loadPending();loadAll();}
   catch(e){alert$('admin-alert','Error saving.','error');}
 }
 
 async function loadAgentDropdown(){
-  const agents=await getAgents(),sel=document.getElementById('ac-agent'),prev=sel.value;
+  const agents=await rpc('get_agents_board',{}),sel=document.getElementById('ac-agent'),prev=sel.value;
   sel.innerHTML='<option value="">— Choose agent —</option>'+agents.map(a=>`<option value="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}</option>`).join('');
   if(prev)sel.value=prev;
 }
@@ -1363,8 +1296,7 @@ async function adminAddComm(){
   if(isNaN(amount)||amount<=0){alert$('admin-comm-alert','Enter a valid amount.','error');return;}
   document.getElementById('ac-spin').style.display='inline';
   try{
-    await insertComm({agent_id:agentId,agent_name:agentName,amount,note:note?'[Admin] '+note:'[Admin entry]',status:'approved',approved_at:new Date().toISOString()});
-    await awardSaleCoins(agentId,1);
+    await rpc('admin_add_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_agent_id:agentId,p_amount:amount,p_note:note});
     document.getElementById('ac-amount').value='';document.getElementById('ac-note').value='';sel.value='';
     alert$('admin-comm-alert',agentName+' — '+fmt(amount)+' added! +10 Mike Coins awarded.','success');loadAdmin();
   }catch(e){alert$('admin-comm-alert','Error adding.','error');}
@@ -1372,7 +1304,7 @@ async function adminAddComm(){
 }
 
 async function loadAgents(){
-  const agents=await getAgents(),el=document.getElementById('agents-list');
+  const agents=await rpc('get_agents_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}),el=document.getElementById('agents-list');
   if(!agents.length){el.innerHTML='<div class="empty">No agents yet</div>';return;}
   el.innerHTML=agents.map(a=>`<div class="entry-row flex-between"><div class="flex"><div class="avatar">${esc(initials(a.name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(a.name)}</div><div style="font-size:11px;color:var(--muted)">PIN: ${esc(a.pin)} · Added ${new Date(a.created_at).toLocaleDateString()}</div></div></div><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="removeAgent('${esc(a.id)}')">Remove</button></div>`).join('');
 }
@@ -1383,12 +1315,12 @@ async function addAgent(){
   if(!name){alert$('add-agent-alert','Enter the agent name.','error');return;}
   if(!/^\d{4}$/.test(pin)){alert$('add-agent-alert','PIN must be exactly 4 digits.','error');return;}
   document.getElementById('na-spin').style.display='inline';
-  try{await insertAgent({name,pin});document.getElementById('na-name').value='';document.getElementById('na-pin').value='';alert$('add-agent-alert',name+' added!','success');loadAgents();}
+  try{await rpc('admin_add_agent',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_name:name,p_pin:pin});document.getElementById('na-name').value='';document.getElementById('na-pin').value='';alert$('add-agent-alert',name+' added!','success');loadAgents();}
   catch(e){alert$('add-agent-alert',e.message||'Error.','error');}
   document.getElementById('na-spin').style.display='none';
 }
 
-async function removeAgent(id){if(!confirm('Remove this agent?'))return;try{await deleteAgent(id);loadAgents();}catch(e){alert$('add-agent-alert','Error removing.','error');}}
+async function removeAgent(id){if(!confirm('Remove this agent?'))return;try{await rpc('admin_remove_agent',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id});loadAgents();}catch(e){alert$('add-agent-alert','Error removing.','error');}}
 
 let allCommsCache=[];
 
@@ -1399,7 +1331,7 @@ function renderAllEntries(comms){
 }
 
 async function loadAll(){
-  allCommsCache=await getAllComms();
+  allCommsCache=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password});
   const search=document.getElementById('all-search');
   if(search)search.value='';
   if(!allCommsCache.length){document.getElementById('all-list').innerHTML='<div class="empty">No entries yet</div>';return;}
@@ -1424,8 +1356,11 @@ function csvRow(arr){return arr.map(csvEscape).join(',');}
 
 async function exportAllToCSV(){
   try{
-    const[comms,agents]=await Promise.all([getAllComms(),getAgents()]);
-    const{data:bets}=await sb.from('bets').select('*,bet_lines(title,type)').order('created_at',{ascending:false});
+    const[comms,agents,bets]=await Promise.all([
+      rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}),
+      rpc('get_agents_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}),
+      rpc('get_all_bets_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password})
+    ]);
 
     const lines=[];
 
@@ -1453,7 +1388,7 @@ async function exportAllToCSV(){
     lines.push('=== SPORTSBOOK BET HISTORY ===');
     lines.push(csvRow(['Bettor','Type','Line','Side','Amount Wagered','Odds','Status','Payout','Placed At']));
     (bets||[]).forEach(b=>{
-      lines.push(csvRow([b.bettor_name,b.bettor_type,b.bet_lines?.title||'',b.side,b.amount,b.odds_at_bet,b.status,b.payout||0,new Date(b.created_at).toLocaleString()]));
+      lines.push(csvRow([b.bettor_name,b.bettor_type,b.line_title||'',b.side,b.amount,b.odds_at_bet,b.status,b.payout||0,new Date(b.created_at).toLocaleString()]));
     });
 
     const csvContent=lines.join('\n');
@@ -1475,13 +1410,13 @@ document.getElementById('al-pin').addEventListener('keydown',e=>{if(e.key==='Ent
 document.getElementById('adl-pass').addEventListener('keydown',e=>{if(e.key==='Enter')adminLogin();});
 
 loadBoard();startRefresh();
-setInterval(async()=>{if(!adminAuthed)return;const comms=await getAllComms();const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
+setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}).catch(()=>[]);const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
 
 // ── UPDATE-AVAILABLE CHECK ──
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-06-30-014';
+const APP_VERSION='2026-07-02-security-rpc-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
