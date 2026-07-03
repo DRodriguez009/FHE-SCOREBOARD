@@ -1,0 +1,6 @@
+.claude/*
+!.claude/sessions/
+!.claude/handoffs/
+.vercel
+.env*
+.smoke-out

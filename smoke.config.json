@@ -1,0 +1,24 @@
+{
+  "baseUrl": "https://fhe-scoreboard.vercel.app",
+  "routes": ["/"],
+  "flows": {
+    "loginAgent": [
+      { "action": "navigate", "path": "/" },
+      { "action": "click", "selector": "#tn-agent" },
+      { "action": "fill", "selector": "#al-name", "value": "$SMOKE_AGENT_NAME" },
+      { "action": "fill", "selector": "#al-pin", "value": "$SMOKE_AGENT_PIN" },
+      { "action": "click", "selector": "button[onclick=\"agentLogin()\"]" },
+      { "action": "waitFor", "selector": "#agent-portal-section" },
+      { "action": "screenshot", "name": "agent-portal-authed" }
+    ],
+    "loginAdmin": [
+      { "action": "navigate", "path": "/" },
+      { "action": "click", "selector": "#tn-admin" },
+      { "action": "fill", "selector": "#adl-user", "value": "$SMOKE_ADMIN_USER" },
+      { "action": "fill", "selector": "#adl-pass", "value": "$SMOKE_ADMIN_PASS" },
+      { "action": "click", "selector": "button[onclick=\"adminLogin()\"]" },
+      { "action": "waitFor", "selector": "#admin-panel-section" },
+      { "action": "screenshot", "name": "admin-panel-authed" }
+    ]
+  }
+}
