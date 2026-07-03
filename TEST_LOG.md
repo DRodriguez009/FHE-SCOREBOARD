@@ -33,3 +33,18 @@
 - Credentials are passed as env vars only (`SMOKE_AGENT_NAME`/`SMOKE_AGENT_PIN`, `SMOKE_ADMIN_USER`/`SMOKE_ADMIN_PASS`) — never written to `smoke.config.json` or committed anywhere.
 - Confirmed via code read (`agentLogin()`/`adminLogin()`) that both call read-only `verify_*_login` RPCs — no lockout counters, no shared/global session state — so this check is safe to run anytime without affecting real users.
 - Usage: `SMOKE_AGENT_NAME="..." SMOKE_AGENT_PIN="..." node scripts/smoke-login-check.mjs loginAgent` (swap for `SMOKE_ADMIN_USER`/`SMOKE_ADMIN_PASS` + `loginAdmin`).
+
+## Smoke — 2026-07-03 (re-run after PR #4 merge)
+
+### URL: https://fhe-scoreboard.vercel.app
+### Surface: headless
+### Overall: PASS
+
+| Check | Result | Details |
+|-------|--------|---------|
+| Route: / | PASS | 0 console errors, 0 failed requests |
+| Flow: loginAgent (Daniel Ramirez) | PASS | 0 console errors, 0 failed requests |
+| Flow: loginAdmin (admin) | PASS | 0 console errors, 0 failed requests |
+
+### Notes:
+- Full re-run of both the route check and the two login flows against production after merging PR #4 to main — everything still green, no regressions from the merge.
