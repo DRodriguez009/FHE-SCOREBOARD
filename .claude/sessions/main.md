@@ -281,3 +281,23 @@
 
 ### Where Left Off
 - No open work on this repo. `main` clean, no stale branches remain on GitHub.
+
+## Session — 2026-07-06 19:20 (wt: fhe-scoreboard)
+
+### Work Done
+- Renamed the "Leaderboard" nav link to "Goal Tracker" in both nav bars in `index.html` (agent
+  view line 343, admin view line 523) — display label only, link destination
+  (`fhe-command-center.vercel.app/leaderboard`) unchanged. Matches the same fix applied across
+  `fhe-command-center`, `goal-tracker`, and `time-clock-tracking` this session, closing the loop
+  the earlier session's note anticipated ("doesn't affect this repo since its nav links go
+  through the hub" — true for routing, but the display label still needed the update).
+- Deliberately did NOT touch this app's own "Agent Leaderboard" heading (line 305) or the
+  `sb-bettor-leaderboard` / `loadBettorLeaderboard` betting-feature identifiers — those are this
+  app's own internal sales-ranking feature name, unrelated to the sibling app's rename.
+
+### Decisions
+- Scoped the rename strictly to the two nav-link anchors pointing at the hub's `/leaderboard`
+  route — left every other "leaderboard" occurrence (this app's own feature name) untouched.
+
+### Where Left Off
+- No open work on this repo. Pushed directly to `main` (`03375d8`, no branch-protection ruleset).
