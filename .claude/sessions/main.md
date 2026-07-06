@@ -237,3 +237,35 @@
   `fhe-scoreboard`/`goal-leaderboard`/`time-clock-tracking` under `fhe-command-center` — is
   already shipped per the prior shard's note (plain Next.js `rewrites()` + `basePath`, not
   Vercel microfrontends) and wasn't touched this session.
+
+## Session — 2026-07-06 17:20 (wt: fhe-scoreboard)
+
+### Work Done
+- Replaced the `.section-tab` "Go to" links' styling to match the always-visible gradient-pill
+  redesign shipped the same day in `goal-leaderboard`/`time-clock-tracking` (`feat/section-tabs`
+  → PR #6, merged) — this repo's tabs were already always-visible links (no dropdown), just
+  restyled to match the new palette.
+- Fixed as part of a cross-repo pill-color-collision audit triggered by the user spotting
+  duplicate colors (Home/Hub both `indigo-500→blue-500`) in the sibling apps. This repo had no
+  actual same-page collision, but was using different brand-color CSS vars (`var(--green2)`,
+  `var(--orange)`) than the Tailwind classes used in the sibling apps, so identical labels
+  (Leaderboard, Time Clock) rendered as different colors depending which app you were in.
+  Unified via `fix/nav-pill-colors` → PR #7 (merged): `.section-tab-home` now
+  `#6366f1→#4338ca` (indigo), `.section-tab-leaderboard` now `#10b981→#047857` (emerald),
+  `.section-tab-timeclock` now `#14b8a6→#0f766e` (teal), `.btn-signout` now `#f43f5e→#be123c`
+  (rose) — hardcoded hex matching the Tailwind palette used in the Next.js sibling apps, not
+  referencing the `--green2`/`--orange` brand vars (which are still used elsewhere in this file
+  for unrelated brand-colored UI, untouched).
+
+### Decisions
+- This repo's nav-tab colors should track the same shared palette as `goal-leaderboard`/
+  `time-clock-tracking` going forward, even though it's a separate static HTML codebase with no
+  shared component — same label (Home/Hub, Leaderboard, Time Clock, Scoreboard, Log out) must
+  always mean the same color across the whole FHE app suite.
+
+### Where Left Off
+- No open work on this repo. `main` is clean, both PRs (#6, #7) merged and confirmed live via
+  the GitHub commit-status API (Vercel deployment `success`) and a direct grep of the deployed
+  page for the new hex values.
+- Still no `TASKS.md`/`PLAN.md`/`CONTEXT.md`/`VISION.md` — optional, not blocking at current
+  scope.
