@@ -156,12 +156,15 @@ select option{background:#020802}
 .btn-sm{padding:6px 12px;font-size:12px}
 .btn-full{width:100%;justify-content:center}
 
-/* ── SECTION DROPDOWN ── */
-.section-dropdown{position:relative;display:inline-block}
-.section-dropdown-menu{display:none;position:absolute;right:0;top:100%;margin-top:6px;background:var(--card);border:1px solid var(--border);border-radius:var(--r);min-width:150px;z-index:300;overflow:hidden}
-.section-dropdown-menu.open{display:block}
-.section-dropdown-menu a{display:block;padding:10px 14px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text);text-decoration:none;transition:background .15s,color .15s}
-.section-dropdown-menu a:hover{background:var(--border);color:var(--orange)}
+/* ── SECTION TABS ── */
+.section-tab{padding:6px 14px;border-radius:999px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#fff;text-decoration:none;display:inline-flex;align-items:center;transition:filter .15s,transform .1s}
+.section-tab:hover{filter:brightness(1.1)}
+.section-tab:active{transform:scale(.98)}
+.section-tab-home{background:linear-gradient(to right,#6366f1,#3b82f6)}
+.section-tab-leaderboard{background:linear-gradient(to right,var(--green2),var(--green3))}
+.section-tab-timeclock{background:linear-gradient(to right,var(--orange),var(--orange2))}
+.btn-signout{background:linear-gradient(to right,#f43f5e,#ef4444);color:#fff;border:none}
+.btn-signout:hover{filter:brightness(1.1);opacity:1}
 
 /* ── BADGES ── */
 .badge{display:inline-block;padding:3px 9px;border-radius:3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
@@ -336,15 +339,10 @@ select option{background:#020802}
         <div style="font-size:12px;color:var(--muted)">Submit and track your commissions</div>
       </div>
       <div class="flex" style="gap:8px">
-        <div class="section-dropdown">
-          <button class="btn btn-ghost btn-sm" onclick="toggleSectionMenu('sd-agent')">☰ Go to</button>
-          <div class="section-dropdown-menu" id="sd-agent">
-            <a href="https://fhe-command-center.vercel.app/">Home</a>
-            <a href="https://fhe-command-center.vercel.app/leaderboard">Leaderboard</a>
-            <a href="https://fhe-command-center.vercel.app/timeclock">Time Clock</a>
-          </div>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="agentLogout()">Sign out</button>
+        <a class="section-tab section-tab-home" href="https://fhe-command-center.vercel.app/">Home</a>
+        <a class="section-tab section-tab-leaderboard" href="https://fhe-command-center.vercel.app/leaderboard">Leaderboard</a>
+        <a class="section-tab section-tab-timeclock" href="https://fhe-command-center.vercel.app/timeclock">Time Clock</a>
+        <button class="btn btn-signout btn-sm" onclick="agentLogout()">Sign out</button>
       </div>
     </div>
     <div id="submit-alert"></div>
@@ -521,15 +519,10 @@ select option{background:#020802}
       </div>
       <div class="flex" style="gap:8px">
         <button class="btn btn-ghost btn-sm" onclick="loadAdmin()">↻ Refresh</button>
-        <div class="section-dropdown">
-          <button class="btn btn-ghost btn-sm" onclick="toggleSectionMenu('sd-admin')">☰ Go to</button>
-          <div class="section-dropdown-menu" id="sd-admin">
-            <a href="https://fhe-command-center.vercel.app/">Home</a>
-            <a href="https://fhe-command-center.vercel.app/leaderboard">Leaderboard</a>
-            <a href="https://fhe-command-center.vercel.app/timeclock">Time Clock</a>
-          </div>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="adminLogout()">Sign out</button>
+        <a class="section-tab section-tab-home" href="https://fhe-command-center.vercel.app/">Home</a>
+        <a class="section-tab section-tab-leaderboard" href="https://fhe-command-center.vercel.app/leaderboard">Leaderboard</a>
+        <a class="section-tab section-tab-timeclock" href="https://fhe-command-center.vercel.app/timeclock">Time Clock</a>
+        <button class="btn btn-signout btn-sm" onclick="adminLogout()">Sign out</button>
       </div>
     </div>
     <div class="stat-grid" id="admin-stats"></div>
@@ -627,15 +620,6 @@ let currentAgent=null; // {id,name,coins,pin} — pin kept in memory only, re-se
 const AGENT_SESSION_KEY='fhe-scoreboard-agent-session';
 const ADMIN_SESSION_KEY='fhe-scoreboard-admin-session';
 
-function toggleSectionMenu(id){
-  document.querySelectorAll('.section-dropdown-menu').forEach(m=>{ if(m.id!==id) m.classList.remove('open'); });
-  document.getElementById(id).classList.toggle('open');
-}
-document.addEventListener('click', function(e){
-  if(!e.target.closest('.section-dropdown')){
-    document.querySelectorAll('.section-dropdown-menu').forEach(m=>m.classList.remove('open'));
-  }
-});
 
 async function rpc(fn,args){
   const{data,error}=await sb.rpc(fn,args);
