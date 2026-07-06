@@ -269,3 +269,15 @@
   page for the new hex values.
 - Still no `TASKS.md`/`PLAN.md`/`CONTEXT.md`/`VISION.md` — optional, not blocking at current
   scope.
+
+## Session — 2026-07-06 22:10 (wt: fhe-scoreboard)
+
+### Work Done
+- Branch cleanup: deleted merged `feat/section-tabs` and `fix/nav-pill-colors` (local + remote).
+  `main` is now the only branch.
+- Note for context, not a change here: `goal-leaderboard` (referenced above) was renamed to
+  `goal-tracker` in a sibling repo the same day — doesn't affect this repo since its nav links go
+  through the `fhe-command-center` hub, not the app's own domain directly.
+
+### Where Left Off
+- No open work on this repo. `main` clean, no stale branches remain on GitHub.

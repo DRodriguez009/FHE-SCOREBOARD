@@ -1,5 +1,5 @@
 # Session Handoff — main
-Generated: 2026-07-06 17:20
+Generated: 2026-07-06 22:10
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
 ## What We Were Working On
@@ -11,7 +11,12 @@ fixed to use the same hex palette as the sibling apps.
 
 ## Remaining Work
 None on this repo. PR #6 (`feat/section-tabs`) and PR #7 (`fix/nav-pill-colors`) both merged and
-confirmed deployed.
+confirmed deployed. Their branches (local + remote) have since been deleted — `main` is the only
+branch left.
+
+Unrelated to this repo but worth knowing: `goal-leaderboard` (mentioned below) was renamed to
+`goal-tracker` the same day, and its Supabase project (shared with `time-clock-tracking`) has a
+separation decision pending with their Supabase owner, Enzo. Neither affects this repo.
 
 This repo still has never been through `/auto-init` — no TASKS.md/PLAN.md/CONTEXT.md/VISION.md
 exist. Optional, not blocking anything at current scope.
