@@ -239,6 +239,53 @@ select option{background:#020802}
   .tnav-btn{padding:14px 12px;font-size:11px}
   .manager-grid{grid-template-columns:1fr 1fr}
 }
+
+/* ── DESKTOP / TV VIEW ──
+   The board is built to also run on a wall-mounted TV / large desktop. Below,
+   the scoreboard page fills far more of a wide screen and the board typography
+   scales up so it stays legible from across a room. Only #page-scoreboard is
+   widened (other pages/forms stay compact); the .tv-* rules are board-only. */
+@media(min-width:1200px){
+  #page-scoreboard{max-width:1180px}
+}
+@media(min-width:1500px){
+  #page-scoreboard{max-width:1400px;padding:1.5rem 2rem}
+  .tv-hdr{padding:1.5rem 2rem}
+  .tv-hdr h2{font-size:42px}
+  .eyebrow{font-size:12px}
+  .tv-updated{font-size:13px}
+  .tv-period-pill{font-size:15px;padding:7px 18px}
+  .tv-stat{padding:1.25rem 1.5rem}
+  .tsl{font-size:12px}
+  .tsv{font-size:30px}
+  .tv-row{grid-template-columns:72px 1fr 92px 82px 200px;padding:18px 2rem}
+  .tv-rank{font-size:28px}
+  .tv-row.r1 .tv-rank{font-size:36px}
+  .tv-name{font-size:26px}
+  .tv-sub{font-size:13px}
+  .tv-bar-bg{height:7px}
+  .tv-sold-num{font-size:27px}
+  .tv-sold-lbl{font-size:11px}
+  .tv-pct{font-size:14px}
+  .tv-amount{font-size:28px}
+  .tv-row.r1 .tv-amount{font-size:32px}
+}
+@media(min-width:1900px){
+  #page-scoreboard{max-width:1720px}
+  .tv-hdr h2{font-size:54px}
+  .tsv{font-size:38px}
+  .tv-stat{padding:1.5rem 1.75rem}
+  .tv-row{grid-template-columns:92px 1fr 122px 102px 268px;padding:24px 2.5rem}
+  .tv-rank{font-size:34px}
+  .tv-row.r1 .tv-rank{font-size:46px}
+  .tv-name{font-size:33px}
+  .tv-sub{font-size:15px}
+  .tv-bar-bg{height:9px}
+  .tv-sold-num{font-size:35px}
+  .tv-pct{font-size:16px}
+  .tv-amount{font-size:37px}
+  .tv-row.r1 .tv-amount{font-size:44px}
+}
 </style>
 </head>
 <body>
