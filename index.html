@@ -372,7 +372,7 @@ select option{background:#020802}
       <div class="card">
         <div id="al-alert"></div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">Your name</label><input type="text" id="al-name" placeholder="Registered name"></div>
+          <div class="form-group"><label class="form-label">Your name</label><select id="al-name"><option value="">Select your name…</option></select></div>
           <div class="form-group"><label class="form-label">PIN</label><input type="password" id="al-pin" placeholder="4-digit PIN" maxlength="4"></div>
         </div>
         <button class="btn btn-primary btn-full" onclick="agentLogin()"><span id="al-spin" style="display:none"><span class="spinner"></span></span>Sign In</button>
@@ -548,7 +548,7 @@ select option{background:#020802}
           <div class="mgr-btn" onclick="selectMgr(this,'michaelsanguily','Michael Sanguily')">Michael Sanguily</div>
         </div>
         <div class="section-label">Or enter credentials</div>
-        <div class="form-group"><label class="form-label">Username</label><input type="text" id="adl-user" placeholder="admin"></div>
+        <div class="form-group"><label class="form-label">Name</label><select id="adl-user"><option value="">Select your name…</option></select></div>
         <div class="form-group"><label class="form-label">Password / PIN</label><input type="password" id="adl-pass" placeholder="Password or PIN"></div>
         <button class="btn btn-primary btn-full" onclick="adminLogin()"><span id="adl-spin" style="display:none"><span class="spinner"></span></span>Sign In</button>
         <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:10px">Managers: select your name above then enter your password</div>
@@ -1515,7 +1515,29 @@ document.getElementById('edit-modal').addEventListener('click',function(e){if(e.
 document.getElementById('al-pin').addEventListener('keydown',e=>{if(e.key==='Enter')agentLogin();});
 document.getElementById('adl-pass').addEventListener('keydown',e=>{if(e.key==='Enter')adminLogin();});
 
-loadBoard();startRefresh();restoreAgentSession();restoreAdminSession();
+// Populate the Agent + Admin login dropdowns (goal-tracker style: pick a name, enter the PIN).
+// Agent names come from the public board RPC; admin names from list_admin_names (username value,
+// display name label). Falls back silently if the fetch fails — the existing login still works.
+async function populateLoginDropdowns(){
+  try{
+    const agents=await rpc('get_agents_board',{});
+    const sel=document.getElementById('al-name');
+    if(sel&&Array.isArray(agents)){
+      const cur=sel.value;
+      sel.innerHTML='<option value="">Select your name…</option>'+agents.map(a=>`<option value="${esc(a.name)}">${esc(a.name)}</option>`).join('');
+      if(cur)sel.value=cur;
+    }
+  }catch(e){}
+  try{
+    const admins=await rpc('list_admin_names',{});
+    const sel=document.getElementById('adl-user');
+    if(sel&&Array.isArray(admins)){
+      sel.innerHTML='<option value="">Select your name…</option>'+admins.map(a=>`<option value="${esc(a.username)}">${esc(a.name)}</option>`).join('');
+    }
+  }catch(e){}
+}
+
+loadBoard();startRefresh();restoreAgentSession();restoreAdminSession();populateLoginDropdowns();
 setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}).catch(()=>[]);const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
 
 // ── UPDATE-AVAILABLE CHECK ──
