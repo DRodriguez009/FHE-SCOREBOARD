@@ -1,37 +1,37 @@
 # Session Handoff — main
-Generated: 2026-07-06 19:20
+Generated: 2026-07-20 19:18
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
 ## What We Were Working On
-Renamed the "Leaderboard" nav link to "Goal Tracker" in both nav bars in `index.html` (agent view
-and admin view) — display label only, link destination unchanged. Matches the same rename applied
-across `fhe-command-center`, `goal-tracker`, and `time-clock-tracking` this session. Deliberately
-left this app's own "Agent Leaderboard" heading and `sb-bettor-leaderboard`/
-`loadBettorLeaderboard` identifiers untouched — those are this app's own internal sales-ranking
-feature name, unrelated to the sibling app's rename.
-
-Also checked this repo for the duplicate-Home-link bug found in `goal-tracker` and
-`time-clock-tracking` (a standalone "Home" link duplicating a nav component's own hub link) — not
-present here, this repo's nav only has one hub link per nav bar. No fix needed.
+Two owner-requested features, both SHIPPED to prod and smoke-tested:
+1. Daily motivation strip in the agent portal (personal greeting + auto-rotating daily quote).
+2. Admin "⚡ Generate Matchups" button in the Mike Coins Sportsbook (auto-pairs the whole roster
+   into head-to-head bet lines).
 
 ## Remaining Work
-None on this repo. Rename pushed directly to `main` (`03375d8`, no branch-protection ruleset).
-
-Unrelated to this repo but worth knowing: the Supabase project shared between `goal-tracker` and
-`time-clock-tracking` has a separation decision still pending with their Supabase owner, Enzo.
-Doesn't affect this repo either way.
-
-This repo still has never been through `/auto-init` — no TASKS.md/PLAN.md/CONTEXT.md/VISION.md
-exist. Optional, not blocking anything at current scope.
+- No open code work. Both features are live (APP_VERSION `2026-07-20-motivation-matchups-002`,
+  commits bcd3c22 + 635722a on main).
+- Board is clean: the 8 prod matchup lines (week of Jul 19) were cancelled & regenerated and now
+  carry the disambiguated titles ("Gabriel T." / "Gabriel H."). No stale lines remain.
+- This repo still has no TASKS.md/PLAN.md/CONTEXT.md/VISION.md — optional, not blocking.
 
 ## Key Decisions This Session
-- Scoped the rename strictly to the two nav-link anchors pointing at the hub's `/leaderboard`
-  route — left every other "leaderboard" occurrence (this app's own feature name) untouched.
+- Motivation quotes are IN-CODE (JS `MOTIVATION_QUOTES` array, 30 quotes), rotated by `dayOfYear()`;
+  changing them = a code push. Greeting is personalized by first name + a daily rotating quote.
+- Matchup generation is CLIENT-SIDE: admin button → JS ranks whole roster by week-to-date
+  commission → calls existing `create_bet_line` RPC per pair. No new server RPC, no cron. Odds via
+  `oddsForPair()` (same formula as `suggestOdds()`), deduped against open lines by id+name.
+- Titles use first name; add last initial only when first names collide (`shortName()`).
 
 ## Kickstart Prompt
-> Read this repo's `.claude/sessions/main.md` in `~/Projects/fhe-scoreboard` for full context,
-> especially the 2026-07-06 19:20 session block. There is no engineering work queued — the nav
-> links (`index.html` `.section-tab-leaderboard` anchors) now read "Goal Tracker" instead of
-> "Leaderboard", matching the sibling apps. If a new tab/pill is ever added to this file, pick a
-> color from the existing indigo/emerald/teal/rose palette (see the sibling repos' handoffs for
-> the full color-to-label map).
+> Read .claude/sessions/main.md. Single static `index.html` on Vercel (project fhe-scoreboard),
+> its OWN Supabase `sralgaskfktcynpdxjhj` (NOT shared eawp). Two features live as of 2026-07-20:
+> (1) Daily motivation — `MOTIVATION_QUOTES`/`MOTIVATION_GREETINGS` + `renderMotivation()` (called
+> in `loadAgentView()`), renders into `#agent-motivation`, rotates by `dayOfYear()`. (2) Admin
+> auto-matchups — `generateMatchups()` + `oddsForPair()` + `shortName()`, wired to the "⚡ Generate
+> Matchups" button (`#sb-gen-btn`) at the top of `#sb-manager-tools`; ranks the roster by
+> week-to-date commission and creates head-to-head lines via `create_bet_line`. To smoke on prod:
+> admin login uses the NAME DROPDOWN (`#adl-user` value `admin`) + password/PIN `3007`, then
+> navTo('sportsbook'). To edit live locally: `python3 -m http.server <port>` and open over http://
+> so Supabase CORS works; bump APP_VERSION on any client-JS change. Do NOT point at the shared eawp
+> Supabase. Ship branch→main directly (owner preference for FHE solo repos).

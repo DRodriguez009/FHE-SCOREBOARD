@@ -301,3 +301,88 @@
 
 ### Where Left Off
 - No open work on this repo. Pushed directly to `main` (`03375d8`, no branch-protection ruleset).
+
+## Session — 2026-07-08 11:41 (wt: fhe-scoreboard)
+
+### Work Done
+- Desktop/TV view (PR #8): added min-width:1200/1500/1900 breakpoints in `index.html` that widen
+  only `#page-scoreboard` (up to 1720px) and scale the `.tv-*` typography/rows; mobile untouched.
+- Login dropdowns (PR #9): Agent + Admin name fields → prefilled `<select>`. Agent from
+  `get_agents_board()` (already public); Admin from new `list_admin_names()` (value=username,
+  label=name). `populateLoginDropdowns()` fills both at boot. Stayed on its OWN Supabase
+  (sralgaskfktcynpdxjhj).
+
+### Decisions
+- Admin kept as name-dropdown + password (not converted to PIN); Agent = name-dropdown + PIN.
+  Login logic unchanged — the fields still feed verify_agent_login / verify_admin_login.
+
+### Where Left Off
+- Merged to main, deployed, verified dropdowns populate on prod (18 agents, 7 admins) + TV view.
+- NOT done: a full end-to-end scoreboard *login* click-through — its credentials live in its
+  separate Supabase; need a scoreboard test login from the owner to finish that.
+
+## Session — 2026-07-20 19:13 (wt: fhe-scoreboard)
+
+### Work Done
+- **Feature 1 — Daily motivation strip** (agent portal). Added `.motivation-strip` CSS
+  (indigo→violet gradient card, ~line 37), a `#agent-motivation` element in the agent portal
+  (before `#submit-alert`), an in-code `MOTIVATION_QUOTES` bank (30 quotes) +
+  `MOTIVATION_GREETINGS` (7 name templates), and `renderMotivation()` — picks greeting+quote
+  deterministically by `dayOfYear()` so the whole team sees the same message and it rotates at
+  midnight (no admin action, no cron, no DB). Greets by first name, e.g. "Rise and grind,
+  Daniel! ☀️". Called at the top of `loadAgentView()` (fires on fresh login AND restored session).
+- **Feature 2 — Admin "⚡ Generate Matchups" button** (sportsbook manager tools, top of
+  `#sb-manager-tools`). `generateMatchups()` fetches get_agents_board + get_public_commission_feed
+  + get_open_lines; ranks the WHOLE roster by week-to-date commission; pairs adjacent ranks into
+  head-to-head lines; computes favorite/underdog odds from trailing-4-week commission via
+  `oddsForPair()` (same model as existing `suggestOdds()`); dedupes against open head_to_head
+  lines (order-independent, by id AND by name); creates each via the existing hardened
+  `create_bet_line` RPC. Odd roster → last agent left unpaired with a note. Reports created/skipped.
+- **Title disambiguation** — `shortName(agent, firstNameCounts)`: titles use first name only,
+  but add a last initial when two roster agents share a first name (e.g. two Gabriels →
+  "Gabriel T." vs "Gabriel H."). Full names still stored in agent_a_name/agent_b_name.
+- Shipped both directly to main (bcd3c22), then the title fix (635722a). APP_VERSION bumped to
+  `2026-07-20-motivation-matchups-002`.
+
+### Decisions
+- Motivation quotes kept **in-code** (not a DB table) — static content, changing them = a code
+  push; simplest for now. Personalized greeting + daily quote (both), per owner.
+- Matchup generation is **client-side** (admin clicks button → JS ranks + calls create_bet_line
+  per pair), NOT a new server RPC — the week-to-date ranking math already lives in JS and
+  create_bet_line is already hardened/verified; only admins can call it. Owner chose the
+  admin-button trigger (not auto-on-empty, not cron) and pairing the WHOLE roster.
+- Kept motivation strip separate from the admin-owned announcement marquee — they coexist.
+
+### Where Left Off
+- **DONE and live on prod, smoke-tested end-to-end** (admin login `admin`/PIN 3007 → Sportsbook →
+  Generate Matchups created 8 lines from a 17-agent roster, 0 console errors; screenshot at
+  ../smoke-scoreboard-matchups-2026-07-20.png). Motivation render verified via the render path
+  locally (identical deployed code).
+- **8 real matchup lines are live on prod** from the smoke test (this week, Jul 19). They have the
+  OLD ambiguous titles (created before the 635722a title fix) — owner can leave them (full names
+  show below each) or cancel & regenerate to pick up the "Gabriel T./H." titles.
+- Admin login is **name-dropdown (value=username) + password/PIN**, NOT the agent name+PIN flow.
+  Admin option value is `admin`, PIN `3007`. Two agents named Gabriel: Tamayo & Hernandez.
+- Untested by me: nothing material — the DB write path was exercised live on prod.
+
+## Session — 2026-07-20 19:18 (wt: fhe-scoreboard)
+
+### Work Done
+- Owner asked to cancel & regenerate the 8 smoke-test matchup lines so they'd pick up the new
+  disambiguated titles. Driven on prod via Playwright (admin `admin`/PIN 3007 → Sportsbook):
+  fetched open lines, cancelled all 8 auto-generated ones by calling `cancel_bet_line` directly
+  through the app's own `rpc()` in page context (8/8 refunded, open → 0), then clicked
+  `#sb-gen-btn` to regenerate. New batch of 8 created, 0 page errors.
+- Confirmed titles now disambiguate: "Gabriel T. vs Javier" and "Thomas vs Gabriel H." (the two
+  Gabriels are Tamayo & Hernandez); all unique-first-name titles unchanged; Robert unpaired again.
+- Screenshot: ../smoke-scoreboard-regen-2026-07-20.png.
+
+### Decisions
+- Cancelled via direct `rpc('cancel_bet_line', …)` in the browser context rather than clicking
+  each row's "Cancel & refund" button — avoids the `confirm()` dialog and DOM matching; filtered
+  to lines whose description contains "Auto-generated matchup" so only auto lines are touched.
+
+### Where Left Off
+- DONE. Board is clean: 8 live matchup lines (week of Jul 19) with correct disambiguated titles,
+  no stale/duplicate lines. No open code work. main is up to date (last feature commits bcd3c22 +
+  635722a; this session was prod-data only, no code changes).
