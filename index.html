@@ -34,6 +34,11 @@ body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);m
 .announce-text{display:inline-block;animation:marquee 20s linear infinite;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:20px;letter-spacing:1.5px;text-transform:uppercase;padding-left:100%;color:#fff}
 @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-100%)}}
 
+/* ── DAILY MOTIVATION STRIP ── */
+.motivation-strip{background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:14px;padding:14px 18px;margin-bottom:1rem;color:#fff;box-shadow:0 4px 14px rgba(99,102,241,.28)}
+.motivation-greeting{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:22px;text-transform:uppercase;letter-spacing:.5px;line-height:1.1}
+.motivation-quote{font-size:13px;opacity:.95;margin-top:4px;font-style:italic}
+
 /* ── HEADER ── */
 .hdr{background:var(--dark);border-bottom:3px solid var(--orange);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;height:62px;position:sticky;top:0;z-index:200;position:relative}
 .hdr::before{content:'THE U';position:absolute;right:1.5rem;top:50%;transform:translateY(-50%);font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:48px;color:var(--orange);opacity:.06;pointer-events:none;letter-spacing:-2px}
@@ -392,6 +397,7 @@ select option{background:#020802}
         <button class="btn btn-signout btn-sm" onclick="agentLogout()">Sign out</button>
       </div>
     </div>
+    <div id="agent-motivation"></div>
     <div id="submit-alert"></div>
     <div id="agent-pb" style="margin-bottom:1rem"></div>
     <div class="stat-grid" id="agent-stats"></div>
@@ -442,7 +448,12 @@ select option{background:#020802}
 
     <!-- MANAGER: CREATE LINE -->
     <div class="card" id="sb-manager-tools" style="display:none">
-      <div class="card-title">🛠️ Create a New Bet Line</div>
+      <div class="card-title">⚡ Auto-Generate Matchups</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Pairs the whole roster into head-to-head lines ranked by this week's commission, with odds set from recent performance. Skips pairings that already have an open line.</div>
+      <button class="btn btn-primary" id="sb-gen-btn" onclick="generateMatchups()"><span id="sb-gen-spin" style="display:none"><span class="spinner"></span></span>⚡ Generate Matchups</button>
+      <div id="sb-gen-alert" style="margin-top:10px"></div>
+      <hr style="border:none;border-top:1px solid var(--border,#333);margin:1.25rem 0">
+      <div class="card-title">🛠️ Create a Bet Line Manually</div>
       <div class="form-group">
         <label class="form-label">Bet Type</label>
         <select id="sbl-type" onchange="sblTypeChanged()">
@@ -919,8 +930,64 @@ async function restoreAgentSession(){
   loadAgentView();
 }
 
+// ── DAILY MOTIVATION ──
+// In-code quote bank. One quote + greeting shown per day, rotated deterministically
+// by day-of-year so every agent sees the same message and it changes at midnight.
+const MOTIVATION_QUOTES=[
+  "Every 'no' is one call closer to a 'yes'. Keep dialing.",
+  "You don't have to be great to start, but you have to start to be great.",
+  "The client who says yes today was a stranger this morning. Go find them.",
+  "Champions aren't made in comfort zones. Make one uncomfortable call right now.",
+  "Your next sale is hiding in the call you almost didn't make.",
+  "Discipline beats motivation. Show up, dial, close, repeat.",
+  "Nobody remembers the easy quarters. Make this one legendary.",
+  "Confidence is contagious — so is hesitation. Pick which one you spread today.",
+  "Small daily wins compound into a monster month.",
+  "The board doesn't lie. Put your name at the top.",
+  "Slow is smooth, smooth is fast. Work your pipeline with purpose.",
+  "You already have everything you need to win today. Go prove it.",
+  "Hungry beats talented when talented isn't hungry.",
+  "Protect your energy in the morning; the afternoon rewards it.",
+  "One more call. That's usually the one that counts.",
+  "Great closers listen twice as much as they pitch.",
+  "Momentum is a choice you make in the first hour of the day.",
+  "Rejection is just redirection. Keep moving.",
+  "Be the reason a family feels taken care of today.",
+  "The grind you're avoiding is the breakthrough you're chasing.",
+  "Consistency turns average agents into top producers.",
+  "Sell like it matters — because to that client, it does.",
+  "Your future self is watching the effort you put in right now.",
+  "Winners focus on the next play, not the last miss.",
+  "Enthusiasm sells. Bring it before you bring the pitch.",
+  "The fortune is in the follow-up. Circle back today.",
+  "You can't close what you don't ask for. Ask.",
+  "Pressure is a privilege. It means you're in the game.",
+  "Make the call you're nervous about first. The rest gets easy.",
+  "Today is a fresh scoreboard. Go earn your spot on it.",
+];
+const MOTIVATION_GREETINGS=[
+  n=>`Let's go, ${n}! 🔥`,
+  n=>`Big day ahead, ${n}! 💪`,
+  n=>`Time to shine, ${n}! ✨`,
+  n=>`Let's close, ${n}! 📞`,
+  n=>`Make it count, ${n}! 🚀`,
+  n=>`Rise and grind, ${n}! ☀️`,
+  n=>`Own the day, ${n}! 🏆`,
+];
+function dayOfYear(){const d=new Date();const start=new Date(d.getFullYear(),0,0);return Math.floor((d-start)/86400000);}
+function renderMotivation(){
+  const el=document.getElementById('agent-motivation');
+  if(!el||!currentAgent)return;
+  const first=(currentAgent.name||'').trim().split(/\s+/)[0]||'there';
+  const doy=dayOfYear();
+  const greet=MOTIVATION_GREETINGS[doy%MOTIVATION_GREETINGS.length](esc(first));
+  const quote=MOTIVATION_QUOTES[doy%MOTIVATION_QUOTES.length];
+  el.innerHTML=`<div class="motivation-strip"><div class="motivation-greeting">${greet}</div><div class="motivation-quote">“${esc(quote)}”</div></div>`;
+}
+
 async function loadAgentView(){
   if(!currentAgent)return;
+  renderMotivation();
   const mine=await rpc('get_my_commissions',{p_agent_id:currentAgent.id,p_pin:currentAgent.pin});
   const approved=mine.filter(c=>c.status==='approved');
   const todayStart=startOfToday(),weekStart=startOfWeek();
@@ -1047,6 +1114,72 @@ async function suggestOdds(){
   document.getElementById('sbl-odds-a').value=oddsA;
   document.getElementById('sbl-odds-b').value=oddsB;
   alert$('sb-alert',`Suggested odds based on last 4 weeks: Agent A ${oddsA}x, Agent B ${oddsB}x. Feel free to adjust before creating.`,'info');
+}
+
+// Compute favorite/underdog odds for a pair from trailing 4-week commission (same model as suggestOdds)
+function oddsForPair(totalA,totalB){
+  const sum=totalA+totalB;
+  if(sum===0)return[2.0,2.0];
+  const probA=totalA/sum,probB=totalB/sum;
+  const oA=Math.max(1.2,Math.min(5,Math.round((1/Math.max(probA,0.1))*10)/10));
+  const oB=Math.max(1.2,Math.min(5,Math.round((1/Math.max(probB,0.1))*10)/10));
+  return[oA,oB];
+}
+async function generateMatchups(){
+  if(!sbCurrentBettor||sbCurrentBettor.type!=='manager')return;
+  alert$('sb-gen-alert','','');
+  document.getElementById('sb-gen-spin').style.display='inline';
+  document.getElementById('sb-gen-btn').disabled=true;
+  try{
+    const[agents,feed,openLines]=await Promise.all([
+      rpc('get_agents_board',{}),
+      rpc('get_public_commission_feed',{}),
+      rpc('get_open_lines',{}),
+    ]);
+    // Week-to-date total per agent (ranking signal)
+    const weekStart=startOfWeek();
+    const weekTotal={};agents.forEach(a=>{weekTotal[a.id]=0;});
+    feed.forEach(c=>{if(c.approved_at&&new Date(c.approved_at)>=weekStart&&weekTotal[c.agent_id]!==undefined)weekTotal[c.agent_id]+=Number(c.amount);});
+    // Trailing 4-week total per agent (odds signal)
+    const fourWeeksAgo=new Date();fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
+    const recentTotal={};agents.forEach(a=>{recentTotal[a.id]=0;});
+    feed.forEach(c=>{if(c.approved_at&&new Date(c.approved_at)>=fourWeeksAgo&&recentTotal[c.agent_id]!==undefined)recentTotal[c.agent_id]+=Number(c.amount);});
+    // Rank whole roster by week-to-date desc, then name for stability
+    const ranked=agents.slice().sort((a,b)=>(weekTotal[b.id]-weekTotal[a.id])||a.name.localeCompare(b.name));
+    // Existing open head-to-head pairs (dedupe, order-independent) by id and by name
+    const existing=new Set();
+    (openLines||[]).filter(l=>l.type==='head_to_head').forEach(l=>{
+      if(l.agent_a_id&&l.agent_b_id)existing.add([String(l.agent_a_id),String(l.agent_b_id)].sort().join('|'));
+      if(l.agent_a_name&&l.agent_b_name)existing.add([l.agent_a_name,l.agent_b_name].sort().join('|'));
+    });
+    const weekLabel=weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    let created=0,skipped=0;
+    for(let i=0;i+1<ranked.length;i+=2){
+      const a=ranked[i],b=ranked[i+1];
+      const idKey=[String(a.id),String(b.id)].sort().join('|');
+      const nameKey=[a.name,b.name].sort().join('|');
+      if(existing.has(idKey)||existing.has(nameKey)){skipped++;continue;}
+      const[oddsA,oddsB]=oddsForPair(recentTotal[a.id]||0,recentTotal[b.id]||0);
+      const fA=a.name.split(/\s+/)[0],fB=b.name.split(/\s+/)[0];
+      await rpc('create_bet_line',{
+        p_username:currentAdmin.username,p_password:currentAdmin.password,
+        p_type:'head_to_head',p_title:`${fA} vs ${fB} — Week of ${weekLabel}`,
+        p_description:'Auto-generated matchup — bet on who books more commission this week.',
+        p_period:'week',
+        p_agent_a_id:a.id,p_agent_a_name:a.name,p_agent_b_id:b.id,p_agent_b_name:b.name,
+        p_odds_a:oddsA,p_odds_b:oddsB,p_threshold:null,p_odds_over:2.0,p_odds_under:2.0,
+        p_odds_yes:2.0,p_odds_no:2.0,
+      });
+      existing.add(idKey);existing.add(nameKey);
+      created++;
+    }
+    const unpaired=ranked.length%2===1?` (${esc(ranked[ranked.length-1].name.split(/\s+/)[0])} had no opponent this round)`:'';
+    if(created===0&&skipped>0)alert$('sb-gen-alert',`All ${skipped} matchup(s) already have open lines — nothing new to add.${unpaired}`,'info');
+    else alert$('sb-gen-alert',`Created ${created} matchup${created===1?'':'s'}${skipped?`, skipped ${skipped} already open`:''}.${unpaired} Agents can bet now.`,'success');
+    loadSportsbook();
+  }catch(e){alert$('sb-gen-alert','Error generating matchups. Check your admin session and try again.','error');}
+  document.getElementById('sb-gen-spin').style.display='none';
+  document.getElementById('sb-gen-btn').disabled=false;
 }
 
 async function createBetLine(){
@@ -1544,7 +1677,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_comm
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-02-session-persist-001';
+const APP_VERSION='2026-07-20-motivation-matchups-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
