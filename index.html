@@ -1125,6 +1125,16 @@ function oddsForPair(totalA,totalB){
   const oB=Math.max(1.2,Math.min(5,Math.round((1/Math.max(probB,0.1))*10)/10));
   return[oA,oB];
 }
+// Short display name for titles: first name, plus last initial when another agent
+// in the roster shares that first name (e.g. two Gabriels → "Gabriel T." / "Gabriel H.")
+function shortName(agent,firstNameCounts){
+  const parts=(agent.name||'').trim().split(/\s+/);
+  const first=parts[0]||agent.name||'';
+  if((firstNameCounts[first.toLowerCase()]||0)>1&&parts.length>1){
+    return `${first} ${parts[parts.length-1][0].toUpperCase()}.`;
+  }
+  return first;
+}
 async function generateMatchups(){
   if(!sbCurrentBettor||sbCurrentBettor.type!=='manager')return;
   alert$('sb-gen-alert','','');
@@ -1152,6 +1162,8 @@ async function generateMatchups(){
       if(l.agent_a_id&&l.agent_b_id)existing.add([String(l.agent_a_id),String(l.agent_b_id)].sort().join('|'));
       if(l.agent_a_name&&l.agent_b_name)existing.add([l.agent_a_name,l.agent_b_name].sort().join('|'));
     });
+    // Count first names across the roster so we only add a last initial when it's needed
+    const firstNameCounts={};agents.forEach(a=>{const f=((a.name||'').trim().split(/\s+/)[0]||'').toLowerCase();firstNameCounts[f]=(firstNameCounts[f]||0)+1;});
     const weekLabel=weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'});
     let created=0,skipped=0;
     for(let i=0;i+1<ranked.length;i+=2){
@@ -1160,7 +1172,7 @@ async function generateMatchups(){
       const nameKey=[a.name,b.name].sort().join('|');
       if(existing.has(idKey)||existing.has(nameKey)){skipped++;continue;}
       const[oddsA,oddsB]=oddsForPair(recentTotal[a.id]||0,recentTotal[b.id]||0);
-      const fA=a.name.split(/\s+/)[0],fB=b.name.split(/\s+/)[0];
+      const fA=shortName(a,firstNameCounts),fB=shortName(b,firstNameCounts);
       await rpc('create_bet_line',{
         p_username:currentAdmin.username,p_password:currentAdmin.password,
         p_type:'head_to_head',p_title:`${fA} vs ${fB} — Week of ${weekLabel}`,
@@ -1677,7 +1689,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_comm
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-20-motivation-matchups-001';
+const APP_VERSION='2026-07-20-motivation-matchups-002';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
