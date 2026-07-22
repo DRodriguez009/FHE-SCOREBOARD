@@ -1,15 +1,17 @@
 # Session Handoff — main
-Generated: 2026-07-22 15:52
+Generated: 2026-07-22 16:00
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
 ## What We Were Working On
 Owner asked to make the scoreboard's toggle-pill row mirror the FHE Command Center's sections.
 SHIPPED to prod: added the 4 missing sections as pills (Coaching Sheets, Certifications, Appointed
 Carriers, NIPR) alongside the existing Home / Goal Tracker / Time Clock, with the command center's
-emoji icons + per-section gradient colors.
+emoji icons + per-section gradient colors. Then a prod mobile smoke caught the 7-pill row
+overflowing/clipping on phones; fixed with `flex-wrap:wrap` on the two pill rows. Both shipped.
 
 ## Remaining Work
-- No open code work. Feature is in this session's commit; APP_VERSION `2026-07-22-command-center-tabs-001`.
+- No open code work. Two commits this session: `3834927` (feature) + `f016d88` (mobile wrap fix).
+  APP_VERSION `2026-07-22-command-center-tabs-002`.
 - Repo still has no TASKS.md/PLAN.md/CONTEXT.md/VISION.md — optional, not blocking.
 
 ## Key Decisions This Session
