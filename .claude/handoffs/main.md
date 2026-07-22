@@ -1,37 +1,37 @@
 # Session Handoff — main
-Generated: 2026-07-20 19:18
+Generated: 2026-07-22 11:53
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
 ## What We Were Working On
-Two owner-requested features, both SHIPPED to prod and smoke-tested:
-1. Daily motivation strip in the agent portal (personal greeting + auto-rotating daily quote).
-2. Admin "⚡ Generate Matchups" button in the Mike Coins Sportsbook (auto-pairs the whole roster
-   into head-to-head bet lines).
+Two owner-requested changes, both SHIPPED to prod and verified:
+1. Move the daily motivational message into the top BANNER (was only in the agent-portal strip).
+2. Let admins back-date a forgotten deal so it lands on the correct day/week.
 
 ## Remaining Work
-- No open code work. Both features are live (APP_VERSION `2026-07-20-motivation-matchups-002`,
-  commits bcd3c22 + 635722a on main).
-- Board is clean: the 8 prod matchup lines (week of Jul 19) were cancelled & regenerated and now
-  carry the disambiguated titles ("Gabriel T." / "Gabriel H."). No stale lines remain.
-- This repo still has no TASKS.md/PLAN.md/CONTEXT.md/VISION.md — optional, not blocking.
+- No open code work. Both live in `af3d8ce` (APP_VERSION `2026-07-22-banner-quote-backdate-001`).
+- Owner action (not a code task): a prod admin announcement ("Happy Friday team!…") is currently
+  posted, which by design hides the daily quote in the banner. Clear it (Admin → Announcement
+  Banner → Clear) to see the auto quote take over. Left in place intentionally.
+- Repo still has no TASKS.md/PLAN.md/CONTEXT.md/VISION.md — optional, not blocking.
 
 ## Key Decisions This Session
-- Motivation quotes are IN-CODE (JS `MOTIVATION_QUOTES` array, 30 quotes), rotated by `dayOfYear()`;
-  changing them = a code push. Greeting is personalized by first name + a daily rotating quote.
-- Matchup generation is CLIENT-SIDE: admin button → JS ranks whole roster by week-to-date
-  commission → calls existing `create_bet_line` RPC per pair. No new server RPC, no cron. Odds via
-  `oddsForPair()` (same formula as `suggestOdds()`), deduped against open lines by id+name.
-- Titles use first name; add last initial only when first names collide (`shortName()`).
+- Banner shows today's `MOTIVATION_QUOTES` quote (💪) ONLY when no admin announcement is set;
+  admin announcement (🏈) fully takes priority (owner chose option a). Personalized greeting stays
+  in the agent-portal strip because it needs the logged-in agent's name.
+- Backdating: board period math already keys off `approved_at`, so `admin_add_commission` gained an
+  optional `p_occurred_at` that sets approved_at+created_at; future dates rejected both sides;
+  sent as noon-local ISO to avoid timezone day-drift. Backdated deals still award +10 coins.
 
 ## Kickstart Prompt
 > Read .claude/sessions/main.md. Single static `index.html` on Vercel (project fhe-scoreboard),
-> its OWN Supabase `sralgaskfktcynpdxjhj` (NOT shared eawp). Two features live as of 2026-07-20:
-> (1) Daily motivation — `MOTIVATION_QUOTES`/`MOTIVATION_GREETINGS` + `renderMotivation()` (called
-> in `loadAgentView()`), renders into `#agent-motivation`, rotates by `dayOfYear()`. (2) Admin
-> auto-matchups — `generateMatchups()` + `oddsForPair()` + `shortName()`, wired to the "⚡ Generate
-> Matchups" button (`#sb-gen-btn`) at the top of `#sb-manager-tools`; ranks the roster by
-> week-to-date commission and creates head-to-head lines via `create_bet_line`. To smoke on prod:
-> admin login uses the NAME DROPDOWN (`#adl-user` value `admin`) + password/PIN `3007`, then
-> navTo('sportsbook'). To edit live locally: `python3 -m http.server <port>` and open over http://
-> so Supabase CORS works; bump APP_VERSION on any client-JS change. Do NOT point at the shared eawp
-> Supabase. Ship branch→main directly (owner preference for FHE solo repos).
+> its OWN Supabase `sralgaskfktcynpdxjhj` (NOT shared eawp). As of 2026-07-22:
+> (1) Top banner (`#announce-bar`) auto-shows today's motivational quote via `showAnnouncement()`
+> (index.html:~802) using `MOTIVATION_QUOTES[dayOfYear()%len]` when `get_announcement` is empty;
+> admin announcement takes priority; `clearAnnouncement()` falls back to the quote.
+> (2) Admin "Add Commission" has an optional Date field (`#ac-date`, max=today); `adminAddComm()`
+> sends noon-local ISO as `p_occurred_at` to the `admin_add_commission` RPC (now 6-arg, optional
+> `p_occurred_at timestamptz` sets approved_at+created_at, future rejected). To smoke DB safely:
+> wrap `admin_add_commission(...)` in a `begin; … rollback;` via Supabase MCP execute_sql (avoids
+> polluting data / awarding coins). To edit live locally: `python3 -m http.server <port>` over
+> http:// (Supabase CORS). Bump APP_VERSION on any client-JS change. Ship branch→main directly
+> (owner preference for FHE solo repos). Do NOT point at the shared eawp Supabase.

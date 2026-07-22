@@ -386,3 +386,37 @@
 - DONE. Board is clean: 8 live matchup lines (week of Jul 19) with correct disambiguated titles,
   no stale/duplicate lines. No open code work. main is up to date (last feature commits bcd3c22 +
   635722a; this session was prod-data only, no code changes).
+
+## Session — 2026-07-22 11:53 (wt: fhe-scoreboard)
+
+### Work Done
+- **Motivation quote moved to the top BANNER.** Owner reported not seeing the motivational message
+  "in the banner" — root cause was a design mismatch: the original build rendered greeting+quote in
+  the agent-portal strip (`#agent-motivation`), only visible after agent login. Fixed
+  `showAnnouncement()` (index.html:~802) so the top marquee (`#announce-bar`, shown on every page
+  incl. TV/Scoreboard) falls back to today's `MOTIVATION_QUOTES[dayOfYear()%len]` (💪 prefix) when
+  no admin announcement is set. Admin announcement (🏈) still takes priority (owner chose option a).
+  `clearAnnouncement()` now calls `showAnnouncement(null)` so the quote returns when cleared. The
+  personalized "Rise and grind, {name}!" greeting stays in the agent-portal strip (needs login name).
+- **Back-date a forgotten deal.** DB migration `admin_add_commission_backdate` on
+  `sralgaskfktcynpdxjhj`: dropped the 5-arg `admin_add_commission`, recreated with optional
+  trailing `p_occurred_at timestamptz DEFAULT NULL` — when provided, sets BOTH `approved_at` and
+  `created_at` to it; rejects future timestamps; re-granted execute to anon+authenticated. UI: added
+  optional Date field (`#ac-date`, capped at today via `todayLocalISODate()` in `loadAgentDropdown`)
+  to Add Commission form; `adminAddComm()` sends noon-local ISO (`new Date(y,mo-1,d,12,0,0)`) or null.
+- Shipped both in `af3d8ce`. APP_VERSION → `2026-07-22-banner-quote-backdate-001`.
+
+### Decisions
+- Banner shows quote ONLY when no admin announcement (option a: admin msg fully replaces the quote
+  while posted). Board period math keys off `approved_at`, so backdating just sets that date — no
+  new period logic needed. Backdated deals still award +10 coins (like any approved deal). Future
+  dates blocked client- AND server-side. `p_occurred_at` sent as noon-local to avoid tz day-drift.
+
+### Where Left Off
+- DONE, shipped, verified on prod. Banner: on the deployed build, forcing the no-announcement path
+  renders "💪 Winners focus on the next play…" ✓; admin priority ✓ (an announcement "Happy Friday
+  team!…" is CURRENTLY posted on prod, so the quote is hidden behind it until an admin clears it —
+  expected behavior, NOT a bug; owner was told to clear it to see the quote). Backdate: verified via
+  a ROLLED-BACK live RPC test — dated yesterday → before_today=true, within_current_week=true ✓;
+  future-date insert left 0 rows ✓. No real data/coins touched.
+- Only pending doc push: this shard + handoff (feature code already on main).
