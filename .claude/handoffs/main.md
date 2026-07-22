@@ -1,18 +1,18 @@
 # Session Handoff — main
-Generated: 2026-07-22 17:12
+Generated: 2026-07-22 18:22
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
 ## What We Were Working On
-Owner asked to track monthly stats — "total commission for the month". SHIPPED: added a fourth
-period toggle **Month to date** (Today / Week to date / Month to date / All time) to the board.
-Purely client-side, no schema change / no migration — reuses the existing `approved_at` period
-filter. Stat tiles relabel to "This month total / sales", and each agent's `.tv-sub` subtitle now
-follows the selected period (owner's choice) instead of being hardcoded to week-to-date.
+Monthly tracking across the app. SHIPPED two features this session:
+1. **Board "Month to date" period** — fourth toggle (Today / Week to date / Month to date / All
+   time), reuses the `approved_at` filter, stat tiles relabel, per-agent subtitle follows period.
+2. **Sportsbook monthly bet lines** — admin Create Line `#sbl-period` now offers week/month/today;
+   open-line settle label maps month→"month-to-date". Both purely client-side, no migration.
 
 ## Remaining Work
-- No open code work. APP_VERSION `2026-07-22-month-to-date-001`.
-- Follow-up offered, NOT done: the Sportsbook bet-line period selector (`#sbl-period`, index.html
-  ~:502) still only offers Today / This week — add a monthly option if owner wants monthly bet lines.
+- No open code work. APP_VERSION `2026-07-22-sportsbook-month-line-001`.
+- Not done (intentional): auto-generate matchups (`generateMatchups`) still hardcodes weekly period
+  — its stated purpose. Add month support there only if owner asks.
 
 ## Key Decisions This Session
 - Month = calendar month-to-date (1st of current month → now), keyed off `approved_at`, same as the

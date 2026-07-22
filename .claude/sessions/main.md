@@ -488,3 +488,29 @@
   Month view: 17 agents, $77,105 / 545 sales, top Albert Gonzalez $11,665. Screenshot
   `../smoke-scoreboard-month-2026-07-22.png`. Only console noise = local favicon 404 (benign).
 - Shipping to main now.
+
+## Session — 2026-07-22 18:20 (wt: fhe-scoreboard)
+
+### Work Done
+- **Added a "Month to date" option to the Sportsbook bet lines** (follow-up to the board month
+  feature). Admin "Create Line" form `#sbl-period` (index.html:503) now offers week / month / today.
+  Purely client-side — verified against the live DB that `bet_lines.period` is plain `text` with
+  ZERO check constraints and `create_bet_line` does no validation (just `coalesce(p_period,'week')`),
+  so `'month'` inserts cleanly with no migration.
+- **Fixed the open-line settle label** (index.html:1285). Was a binary
+  `line.period==='week'?"week-to-date":"today's"` — a month line would have mislabeled as "today's".
+  Replaced with a lookup `{week:'week-to-date',month:'month-to-date',today:"today's"}[period]` +
+  safe `'week-to-date'` fallback (protects the 23 existing week/today lines). Settlement stays
+  manual (admin picks winner), so period is display/metadata only — nothing else needed.
+- APP_VERSION → `2026-07-22-sportsbook-month-line-001`. Also committing the prod-smoke TEST_LOG entry
+  from the board-month verification.
+
+### Decisions
+- No DB migration: `period` column is unconstrained text; RPC unvalidated. Left auto-generate
+  matchups (`generateMatchups`, hardcoded `p_period:'week'`) as-is — its stated purpose is weekly;
+  the ask was specifically the manual Create Line form.
+
+### Where Left Off
+- Built + verified locally: `#sbl-period` renders week/month/today in order; label logic returns
+  "month-to-date" for a month line and falls back to "week-to-date" for anything unexpected. No prod
+  data written (schema inspected read-only, no test line created). Shipping to main, then /smoke.

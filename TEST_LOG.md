@@ -48,3 +48,23 @@
 
 ### Notes:
 - Full re-run of both the route check and the two login flows against production after merging PR #4 to main — everything still green, no regressions from the merge.
+
+## Smoke — 2026-07-22 18:13
+
+### URL: https://fhe-scoreboard.vercel.app/
+### Surface: headless (Playwright MCP)
+### Feature Under Test: Month to date board period
+### Overall: PASS
+
+| Check | Result | Details |
+|-------|--------|---------|
+| Deploy landed | PASS | live APP_VERSION = 2026-07-22-month-to-date-001 |
+| Route: / | PASS | only console error = favicon.ico 404 (pre-existing, benign) |
+| 4 period pills render | PASS | Today / Week to date / Month to date / All time, in order |
+| Click Month to date | PASS | #pb-month activates; TV pill → "Month to date" |
+| Stat tiles relabel | PASS | "This month total $77,105", "This month sales 545", 17 agents |
+| Subtitle follows period | PASS | agent rows show "Month to date: $X (N sales)" |
+
+### Notes:
+- Bonus: daily motivation quote now visible in banner (stale admin announcement was cleared).
+- Screenshot: ../smoke-scoreboard-month-prod-2026-07-22.png

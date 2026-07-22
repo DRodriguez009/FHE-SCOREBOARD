@@ -500,7 +500,7 @@ select option{background:#020802}
       </div>
 
       <div class="form-group"><label class="form-label">Settles using</label>
-        <select id="sbl-period"><option value="week">This week's commission (week to date)</option><option value="today">Today's commission</option></select>
+        <select id="sbl-period"><option value="week">This week's commission (week to date)</option><option value="month">This month's commission (month to date)</option><option value="today">Today's commission</option></select>
       </div>
       <button class="btn btn-orange" onclick="createBetLine()"><span id="sbl-spin" style="display:none"><span class="spinner"></span></span>Create Line</button>
     </div>
@@ -1282,7 +1282,7 @@ async function loadOpenLines(){
     <div class="flex-between" style="margin-bottom:6px">
       <div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(line.title)}</div>
-        <div style="font-size:11px;color:var(--muted)">${lineLabel(line)} · Settles on ${line.period==='week'?"week-to-date":"today's"} commission</div>
+        <div style="font-size:11px;color:var(--muted)">${lineLabel(line)} · Settles on ${({week:'week-to-date',month:'month-to-date',today:"today's"}[line.period]||'week-to-date')} commission</div>
       </div>
       <span class="badge badge-pending">OPEN</span>
     </div>
@@ -1720,7 +1720,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_comm
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-22-month-to-date-001';
+const APP_VERSION='2026-07-22-sportsbook-month-line-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
