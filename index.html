@@ -347,6 +347,7 @@ select option{background:#020802}
     <div class="period-bar">
       <button class="period-btn active" id="pb-today" onclick="setPeriod('today')">Today</button>
       <button class="period-btn" id="pb-week" onclick="setPeriod('week')">Week to date</button>
+      <button class="period-btn" id="pb-month" onclick="setPeriod('month')">Month to date</button>
       <button class="period-btn" id="pb-all" onclick="setPeriod('all')">All time</button>
     </div>
     <div class="flex" style="gap:8px">
@@ -701,6 +702,7 @@ async function rpc(fn,args){
 // ── DATE HELPERS ──
 function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d;}
 function startOfWeek(){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());return d;}
+function startOfMonth(){const d=new Date();d.setHours(0,0,0,0);d.setDate(1);return d;}
 
 // ── APP STATE ──
 let adminAuthed=false,refreshTimer=null,currentPeriod='today',prevRankings={},prevTop=null;
@@ -857,14 +859,14 @@ function calcPersonalBest(comms,agentId){
 // ── SCOREBOARD ──
 function setPeriod(p){
   currentPeriod=p;prevRankings={};
-  ['today','week','all'].forEach(x=>document.getElementById('pb-'+x).classList.toggle('active',x===p));
-  document.getElementById('tv-period-pill').textContent={today:'Today',week:'Week to date',all:'All time'}[p];
+  ['today','week','month','all'].forEach(x=>document.getElementById('pb-'+x).classList.toggle('active',x===p));
+  document.getElementById('tv-period-pill').textContent={today:'Today',week:'Week to date',month:'Month to date',all:'All time'}[p];
   loadBoard();
 }
 
 function filterByPeriod(rows,period){
   if(period==='all')return rows;
-  const since=period==='today'?startOfToday():startOfWeek();
+  const since=period==='today'?startOfToday():period==='month'?startOfMonth():startOfWeek();
   return rows.filter(c=>c.approved_at&&new Date(c.approved_at)>=since);
 }
 
@@ -886,13 +888,10 @@ async function loadBoard(){
   const newTop=withComm.length?withComm[0][0]:null;
   if(newTop&&prevTop&&newTop!==prevTop)fireConfetti();
   prevTop=newTop;
-  // Week-to-date totals + counts per agent, always computed regardless of selected period
-  const weekComms=filterByPeriod(feed,'week');
-  const weekTotals={},weekCounts={};
-  weekComms.forEach(c=>{weekTotals[c.agent_name]=(weekTotals[c.agent_name]||0)+Number(c.amount);weekCounts[c.agent_name]=(weekCounts[c.agent_name]||0)+1;});
   const agentMap={};agents.forEach(a=>{agentMap[a.name]=a.id;});
   document.getElementById('tv-updated').textContent='Updated '+new Date().toLocaleTimeString();
-  const pLabel={today:'Today',week:'This week',all:'All time'}[currentPeriod];
+  const pLabel={today:'Today',week:'This week',month:'This month',all:'All time'}[currentPeriod];
+  const subLabel={today:'Today',week:'Week to date',month:'Month to date',all:'All time'}[currentPeriod];
   document.getElementById('tv-stats').innerHTML=
     `<div class="tv-stat"><div class="tsl">Agents</div><div class="tsv">${agents.length}</div></div>`+
     `<div class="tv-stat"><div class="tsl">${pLabel} total</div><div class="tsv">${fmt(total)}</div></div>`+
@@ -908,11 +907,9 @@ async function loadBoard(){
     const agentId=agentMap[name];
     const streak=agentId?calcStreak(feed,agentId):0;
     const streakHtml=streak>=2?`<span class="tv-streak">🔥${streak}d</span>`:'';
-    const wtdAmt=weekTotals[name]||0;
-    const wtdCount=weekCounts[name]||0;
     const saleCount=counts[name]||0;
     const saleLabel=saleCount===1?'sale':'sales';
-    return`<div class="tv-row ${cls} ${zero}"><div class="tv-rank">${amt>0&&i<3?medals[i]:(amt>0?i+1:'—')}</div><div><div class="tv-name">${esc(name)}${moveHtml}${streakHtml}</div><div class="tv-sub">Week to date: ${fmt(wtdAmt)} (${wtdCount} ${wtdCount===1?'sale':'sales'})</div><div class="tv-bar-bg"><div class="tv-bar-fill ${isGold?'gold-bar':''}" style="width:${pct}%"></div></div></div><div class="tv-sold"><div class="tv-sold-num">${saleCount}</div><div class="tv-sold-lbl">Sold</div></div><div class="tv-amount">${amt>0?fmt(amt):'$0'}</div></div>`;
+    return`<div class="tv-row ${cls} ${zero}"><div class="tv-rank">${amt>0&&i<3?medals[i]:(amt>0?i+1:'—')}</div><div><div class="tv-name">${esc(name)}${moveHtml}${streakHtml}</div><div class="tv-sub">${subLabel}: ${fmt(amt)} (${saleCount} ${saleLabel})</div><div class="tv-bar-bg"><div class="tv-bar-fill ${isGold?'gold-bar':''}" style="width:${pct}%"></div></div></div><div class="tv-sold"><div class="tv-sold-num">${saleCount}</div><div class="tv-sold-lbl">Sold</div></div><div class="tv-amount">${amt>0?fmt(amt):'$0'}</div></div>`;
   }).join('')||'<div class="empty">No agents yet</div>';
   prevRankings=newRankings;
 }
@@ -1723,7 +1720,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_comm
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-22-command-center-tabs-002';
+const APP_VERSION='2026-07-22-month-to-date-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;

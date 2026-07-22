@@ -461,3 +461,30 @@
 ### Where Left Off
 - Verified the wrap fix locally at 390px (row height 60→112, last pill right edge 248<390 ✓).
   Shipping -002 to prod.
+
+## Session — 2026-07-22 17:10 (wt: fhe-scoreboard)
+
+### Work Done
+- **Added a "Month to date" period to the board** (owner: "track monthly stats — total commission
+  for the month"). Purely client-side, no schema/migration — reuses the existing `approved_at`
+  filter pattern. Changes in `index.html`: new `startOfMonth()` helper (`:705`, 1st of month at
+  local midnight); `'month'` branch in `filterByPeriod()` (`:869`); new `#pb-month` "Month to date"
+  button in the period bar (between Week and All time, `:350`); `setPeriod()` now toggles/labels the
+  4th period incl. the TV period pill (`month:'Month to date'`).
+- **Subtitle now follows the selected period** (owner chose this over always-week-to-date). Retired
+  the always-computed `weekTotals`/`weekCounts` block; the per-agent `.tv-sub` now reads
+  `${subLabel}: ${fmt(amt)} (${saleCount} sales)` where subLabel tracks currentPeriod. Stat tiles
+  relabel via `pLabel` (added `month:'This month'`). Net: -3 lines (removed the week block).
+- APP_VERSION → `2026-07-22-month-to-date-001`.
+
+### Decisions
+- Month window = calendar month-to-date (1st of current month → now), keyed off `approved_at`, same
+  as the other periods. Sportsbook bet-line period selector left untouched (still Today/This week) —
+  owner's ask was board stats only; offered a monthly bet line as a follow-up.
+
+### Where Left Off
+- Built + verified live (localhost over http, real Supabase `sralgaskfktcynpdxjhj`). All 4 pills
+  render/toggle; period totals monotonic: Today $4,990 ≤ Week $14,280 ≤ Month $77,105 ≤ All $94,420.
+  Month view: 17 agents, $77,105 / 545 sales, top Albert Gonzalez $11,665. Screenshot
+  `../smoke-scoreboard-month-2026-07-22.png`. Only console noise = local favicon 404 (benign).
+- Shipping to main now.
