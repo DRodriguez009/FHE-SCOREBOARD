@@ -167,7 +167,11 @@ select option{background:#020802}
 .section-tab:active{transform:scale(.98)}
 .section-tab-home{background:linear-gradient(to right,#6366f1,#4338ca)}
 .section-tab-leaderboard{background:linear-gradient(to right,#10b981,#047857)}
-.section-tab-timeclock{background:linear-gradient(to right,#14b8a6,#0f766e)}
+.section-tab-timeclock{background:linear-gradient(to right,#0ea5e9,#0369a1)}
+.section-tab-coachings{background:linear-gradient(to right,#8b5cf6,#6d28d9)}
+.section-tab-certifications{background:linear-gradient(to right,#f43f5e,#be123c)}
+.section-tab-carriers{background:linear-gradient(to right,#14b8a6,#0f766e)}
+.section-tab-nipr{background:linear-gradient(to right,#818cf8,#4f46e5)}
 .btn-signout{background:linear-gradient(to right,#f43f5e,#be123c);color:#fff;border:none}
 .btn-signout:hover{filter:brightness(1.1);opacity:1}
 
@@ -391,9 +395,13 @@ select option{background:#020802}
         <div style="font-size:12px;color:var(--muted)">Submit and track your commissions</div>
       </div>
       <div class="flex" style="gap:8px">
-        <a class="section-tab section-tab-home" href="https://fhe-command-center.vercel.app/">Home</a>
-        <a class="section-tab section-tab-leaderboard" href="https://fhe-command-center.vercel.app/leaderboard">Goal Tracker</a>
-        <a class="section-tab section-tab-timeclock" href="https://fhe-command-center.vercel.app/timeclock">Time Clock</a>
+        <a class="section-tab section-tab-home" href="https://fhe-command-center.vercel.app/">🏠 Home</a>
+        <a class="section-tab section-tab-leaderboard" href="https://fhe-command-center.vercel.app/leaderboard">🏆 Goal Tracker</a>
+        <a class="section-tab section-tab-timeclock" href="https://fhe-command-center.vercel.app/timeclock">⏰ Time Clock</a>
+        <a class="section-tab section-tab-coachings" href="https://fhe-command-center.vercel.app/coachings">📋 Coaching Sheets</a>
+        <a class="section-tab section-tab-certifications" href="https://fhe-command-center.vercel.app/certifications">📜 Certifications</a>
+        <a class="section-tab section-tab-carriers" href="https://fhe-command-center.vercel.app/appointed-carriers">🗺️ Appointed Carriers</a>
+        <a class="section-tab section-tab-nipr" href="https://fhe-command-center.vercel.app/nipr">🆔 NIPR</a>
         <button class="btn btn-signout btn-sm" onclick="agentLogout()">Sign out</button>
       </div>
     </div>
@@ -577,9 +585,13 @@ select option{background:#020802}
       </div>
       <div class="flex" style="gap:8px">
         <button class="btn btn-ghost btn-sm" onclick="loadAdmin()">↻ Refresh</button>
-        <a class="section-tab section-tab-home" href="https://fhe-command-center.vercel.app/">Home</a>
-        <a class="section-tab section-tab-leaderboard" href="https://fhe-command-center.vercel.app/leaderboard">Goal Tracker</a>
-        <a class="section-tab section-tab-timeclock" href="https://fhe-command-center.vercel.app/timeclock">Time Clock</a>
+        <a class="section-tab section-tab-home" href="https://fhe-command-center.vercel.app/">🏠 Home</a>
+        <a class="section-tab section-tab-leaderboard" href="https://fhe-command-center.vercel.app/leaderboard">🏆 Goal Tracker</a>
+        <a class="section-tab section-tab-timeclock" href="https://fhe-command-center.vercel.app/timeclock">⏰ Time Clock</a>
+        <a class="section-tab section-tab-coachings" href="https://fhe-command-center.vercel.app/coachings">📋 Coaching Sheets</a>
+        <a class="section-tab section-tab-certifications" href="https://fhe-command-center.vercel.app/certifications">📜 Certifications</a>
+        <a class="section-tab section-tab-carriers" href="https://fhe-command-center.vercel.app/appointed-carriers">🗺️ Appointed Carriers</a>
+        <a class="section-tab section-tab-nipr" href="https://fhe-command-center.vercel.app/nipr">🆔 NIPR</a>
         <button class="btn btn-signout btn-sm" onclick="adminLogout()">Sign out</button>
       </div>
     </div>
@@ -1711,7 +1723,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_comm
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-22-banner-quote-backdate-001';
+const APP_VERSION='2026-07-22-command-center-tabs-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;

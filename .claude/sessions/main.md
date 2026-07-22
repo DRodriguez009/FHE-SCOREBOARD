@@ -420,3 +420,30 @@
   a ROLLED-BACK live RPC test — dated yesterday → before_today=true, within_current_week=true ✓;
   future-date insert left 0 rows ✓. No real data/coins touched.
 - Only pending doc push: this shard + handoff (feature code already on main).
+
+## Session — 2026-07-22 15:52 (wt: fhe-scoreboard)
+
+### Work Done
+- **Toggle row now mirrors the FHE Command Center.** The `.section-tab` pill row (duplicated in
+  the agent portal `index.html:~394` and admin panel `index.html:~580`) had only 3 of the command
+  center's sections (Home, Goal Tracker, Time Clock). Added the 4 missing sections as pills linking
+  to the command-center hub routes (which rewrite to each app): 📋 Coaching Sheets → `/coachings`,
+  📜 Certifications → `/certifications`, 🗺️ Appointed Carriers → `/appointed-carriers`,
+  🆔 NIPR → `/nipr`. Also added the command-center emoji icons to the existing 3 pills so the row
+  reads as one consistent set (🏠 Home, 🏆 Goal Tracker, ⏰ Time Clock).
+- New CSS gradient classes (`.section-tab-coachings/-certifications/-carriers/-nipr`) colored to the
+  command center's per-section accents (violet/rose/teal/indigo). Recolored Time Clock teal→sky to
+  match the command center (Time Clock=sky there) and free teal for Carriers.
+- APP_VERSION → `2026-07-22-command-center-tabs-001`.
+
+### Decisions
+- "Add missing 4 only" (owner) — kept the existing 3, no self-referential Scoreboard tab.
+- "Match command-center" style (owner) — emoji icons + per-section gradient colors.
+- Links point at the command-center hub URLs (e.g. `fhe-command-center.vercel.app/coachings`), same
+  pattern as the existing pills, so routing stays centralized through the hub's rewrites.
+
+### Where Left Off
+- Verified locally (forced the hidden agent-portal toggle row visible via Playwright): all 7 pills
+  render in order with correct icons/colors, wrap cleanly. Shipping to prod now.
+- Follow-up (owner-requested): clear the stale "Happy Friday team!" admin announcement on prod so
+  the daily banner quote shows again.
