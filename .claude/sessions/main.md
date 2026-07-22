@@ -447,3 +447,17 @@
   render in order with correct icons/colors, wrap cleanly. Shipping to prod now.
 - Follow-up (owner-requested): clear the stale "Happy Friday team!" admin announcement on prod so
   the daily banner quote shows again.
+
+## Session — 2026-07-22 16:00 (wt: fhe-scoreboard)
+
+### Work Done
+- **Mobile wrap fix for the toggle row.** Prod mobile smoke (390px iPhone width) showed the 7-pill
+  row overflowing horizontally and clipping the last pills (Appointed Carriers, NIPR, Sign Out were
+  off-screen and unreachable) — the pill container is `.flex` (no wrap). Added `flex-wrap:wrap` to
+  the two pill-row containers only (agent portal + admin panel; left the third identical `.flex`
+  row untouched by matching each via its following line). Row now wraps to ~3 lines on mobile,
+  every pill + Sign Out fully visible. Desktop unchanged (all fit on one line). APP_VERSION → -002.
+
+### Where Left Off
+- Verified the wrap fix locally at 390px (row height 60→112, last pill right edge 248<390 ✓).
+  Shipping -002 to prod.

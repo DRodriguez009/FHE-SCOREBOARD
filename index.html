@@ -394,7 +394,7 @@ select option{background:#020802}
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;text-transform:uppercase;letter-spacing:1px" id="agent-welcome">Agent Portal</div>
         <div style="font-size:12px;color:var(--muted)">Submit and track your commissions</div>
       </div>
-      <div class="flex" style="gap:8px">
+      <div class="flex" style="gap:8px;flex-wrap:wrap">
         <a class="section-tab section-tab-home" href="https://fhe-command-center.vercel.app/">🏠 Home</a>
         <a class="section-tab section-tab-leaderboard" href="https://fhe-command-center.vercel.app/leaderboard">🏆 Goal Tracker</a>
         <a class="section-tab section-tab-timeclock" href="https://fhe-command-center.vercel.app/timeclock">⏰ Time Clock</a>
@@ -583,7 +583,7 @@ select option{background:#020802}
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--orange)" id="admin-panel-title">Admin Panel</div>
         <div style="font-size:12px;color:var(--muted)">Manage agents and approve commissions</div>
       </div>
-      <div class="flex" style="gap:8px">
+      <div class="flex" style="gap:8px;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" onclick="loadAdmin()">↻ Refresh</button>
         <a class="section-tab section-tab-home" href="https://fhe-command-center.vercel.app/">🏠 Home</a>
         <a class="section-tab section-tab-leaderboard" href="https://fhe-command-center.vercel.app/leaderboard">🏆 Goal Tracker</a>
@@ -1723,7 +1723,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_comm
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-22-command-center-tabs-001';
+const APP_VERSION='2026-07-22-command-center-tabs-002';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
