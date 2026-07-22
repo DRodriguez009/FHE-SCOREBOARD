@@ -615,12 +615,13 @@ select option{background:#020802}
       <div class="card">
         <div class="card-title">Add Commission for Agent</div>
         <div id="admin-comm-alert"></div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Auto-approved. Use when agent forgets to log a deal.</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:1rem">Auto-approved. Use when an agent forgets to log a deal. Leave <b>Date</b> blank for today, or back-date it — a back-dated deal lands on that day/week (not counted as a sale today).</div>
         <div class="form-row-3">
           <div class="form-group"><label class="form-label">Agent</label><select id="ac-agent"><option value="">— Choose —</option></select></div>
           <div class="form-group"><label class="form-label">Amount ($)</label><input type="number" id="ac-amount" placeholder="e.g. 1500" min="0" step="0.01"></div>
           <div class="form-group"><label class="form-label">Note</label><input type="text" id="ac-note" placeholder="Optional"></div>
         </div>
+        <div class="form-group" style="max-width:220px"><label class="form-label">Date (blank = today)</label><input type="date" id="ac-date"></div>
         <button class="btn btn-orange" onclick="adminAddComm()"><span id="ac-spin" style="display:none"><span class="spinner"></span></span>Add & Approve</button>
       </div>
     </div>
@@ -795,14 +796,22 @@ async function setAnnouncement(){
 async function clearAnnouncement(){
   try{
     await rpc('admin_set_announcement',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_message:null});
-    document.getElementById('announce-bar').classList.remove('visible');
+    showAnnouncement(null); // falls back to today's motivational quote
     alert$('admin-alert','Announcement cleared.','info');
   }catch(e){alert$('admin-alert','Error clearing announcement.','error');}
 }
 function showAnnouncement(msg){
-  if(!msg){document.getElementById('announce-bar').classList.remove('visible');return;}
-  document.getElementById('announce-text').textContent='🏈 '+msg+' · 🏈 '+msg+' · ';
-  document.getElementById('announce-bar').classList.add('visible');
+  const bar=document.getElementById('announce-bar'),txt=document.getElementById('announce-text');
+  if(msg){
+    // Admin announcement takes priority
+    txt.textContent='🏈 '+msg+' · 🏈 '+msg+' · ';
+    bar.classList.add('visible');
+    return;
+  }
+  // No admin announcement — fall back to today's motivational quote (rotates daily, team-wide)
+  const q=MOTIVATION_QUOTES[dayOfYear()%MOTIVATION_QUOTES.length];
+  txt.textContent='💪 '+q+' · 💪 '+q+' · ';
+  bar.classList.add('visible');
 }
 // Load announcement from Supabase on page load and every 30s so all agents see it
 async function loadAnnouncement(){
@@ -1533,23 +1542,36 @@ async function saveEdit(){
   catch(e){alert$('admin-alert','Error saving.','error');}
 }
 
+function todayLocalISODate(){const t=new Date();return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;}
 async function loadAgentDropdown(){
   const agents=await rpc('get_agents_board',{}),sel=document.getElementById('ac-agent'),prev=sel.value;
   sel.innerHTML='<option value="">— Choose agent —</option>'+agents.map(a=>`<option value="${esc(a.id)}" data-name="${esc(a.name)}">${esc(a.name)}</option>`).join('');
   if(prev)sel.value=prev;
+  const dt=document.getElementById('ac-date');if(dt)dt.max=todayLocalISODate(); // no future-dating
 }
 
 async function adminAddComm(){
   const sel=document.getElementById('ac-agent'),agentId=sel.value,agentName=sel.options[sel.selectedIndex]?.dataset?.name||'';
   const amount=parseFloat(document.getElementById('ac-amount').value),note=document.getElementById('ac-note').value.trim();
+  const dateStr=(document.getElementById('ac-date').value||'').trim();
   alert$('admin-comm-alert','','');
   if(!agentId){alert$('admin-comm-alert','Select an agent.','error');return;}
   if(isNaN(amount)||amount<=0){alert$('admin-comm-alert','Enter a valid amount.','error');return;}
+  // Blank date = today (server uses now()). A chosen date is sent as noon-local so it lands
+  // squarely on that calendar day regardless of timezone.
+  let occurredAt=null;
+  if(dateStr){
+    const[y,mo,d]=dateStr.split('-').map(Number);
+    const dt=new Date(y,mo-1,d,12,0,0);
+    if(dt>new Date()){alert$('admin-comm-alert','Date cannot be in the future.','error');return;}
+    occurredAt=dt.toISOString();
+  }
   document.getElementById('ac-spin').style.display='inline';
   try{
-    await rpc('admin_add_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_agent_id:agentId,p_amount:amount,p_note:note});
-    document.getElementById('ac-amount').value='';document.getElementById('ac-note').value='';sel.value='';
-    alert$('admin-comm-alert',agentName+' — '+fmt(amount)+' added! +10 Mike Coins awarded.','success');loadAdmin();
+    await rpc('admin_add_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_agent_id:agentId,p_amount:amount,p_note:note,p_occurred_at:occurredAt});
+    document.getElementById('ac-amount').value='';document.getElementById('ac-note').value='';document.getElementById('ac-date').value='';sel.value='';
+    const whenTxt=dateStr?` (dated ${dateStr})`:'';
+    alert$('admin-comm-alert',agentName+' — '+fmt(amount)+' added'+whenTxt+'! +10 Mike Coins awarded.','success');loadAdmin();
   }catch(e){alert$('admin-comm-alert','Error adding.','error');}
   document.getElementById('ac-spin').style.display='none';
 }
@@ -1689,7 +1711,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_comm
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-20-motivation-matchups-002';
+const APP_VERSION='2026-07-22-banner-quote-backdate-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
