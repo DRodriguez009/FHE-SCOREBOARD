@@ -514,3 +514,26 @@
 - Built + verified locally: `#sbl-period` renders week/month/today in order; label logic returns
   "month-to-date" for a month line and falls back to "week-to-date" for anything unexpected. No prod
   data written (schema inspected read-only, no test line created). Shipping to main, then /smoke.
+
+## Session — 2026-07-22 18:26 (wt: fhe-scoreboard) — session close
+
+### Work Done
+- Session wrap: both monthly features are SHIPPED + SMOKED on prod (fhe-scoreboard.vercel.app).
+  1. Board "Month to date" period toggle — commit 5deac99, live-verified (Today $4,990 ≤ Week
+     $14,280 ≤ Month $77,105 ≤ All $94,420; 17 agents, subtitle follows period).
+  2. Sportsbook monthly bet-line option — commit 615df4c, live-verified (#sbl-period renders
+     week/month/today; settle label maps month→"month-to-date" w/ week-to-date fallback).
+- APP_VERSION on prod: `2026-07-22-sportsbook-month-line-001`. TEST_LOG.md has both smoke entries
+  (board-month prod smoke + sportsbook prod smoke), the latter uncommitted at wrap time.
+
+### Decisions
+- No DB migrations needed for either feature — board month filters client-side on `approved_at`;
+  `bet_lines.period` is unconstrained text and `create_bet_line` doesn't validate it.
+- Left `generateMatchups` (auto-generate matchups) as weekly-only by design — offered monthly there
+  as an unstarted follow-up if owner wants it.
+
+### Where Left Off
+- DONE — nothing open. main clean except an uncommitted TEST_LOG.md smoke entry (safe to commit on
+  next push). Only prod console noise is a benign favicon.ico 404.
+- Next possible task (owner's call, NOT started): add month support to Auto-Generate Matchups
+  (`generateMatchups` in index.html:~1156, currently hardcodes `p_period:'week'` at :1198).

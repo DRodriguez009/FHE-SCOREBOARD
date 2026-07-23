@@ -68,3 +68,20 @@
 ### Notes:
 - Bonus: daily motivation quote now visible in banner (stale admin announcement was cleared).
 - Screenshot: ../smoke-scoreboard-month-prod-2026-07-22.png
+
+## Smoke — 2026-07-22 18:24
+
+### URL: https://fhe-scoreboard.vercel.app/
+### Surface: headless (Playwright MCP)
+### Feature Under Test: Sportsbook monthly bet-line option
+### Overall: PASS
+
+| Check | Result | Details |
+|-------|--------|---------|
+| Deploy landed | PASS | live APP_VERSION = 2026-07-22-sportsbook-month-line-001 |
+| Route: / | PASS | only console error = favicon.ico 404 (pre-existing, benign) |
+| #sbl-period options | PASS | week / month / today render in order on prod |
+
+### Notes:
+- Settle-label map verified locally (month→"month-to-date", unknown→"week-to-date" fallback); same
+  deployed bundle confirmed via version match. No prod bet line created (schema is unconstrained text).

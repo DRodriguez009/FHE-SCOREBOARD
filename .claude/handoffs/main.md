@@ -1,18 +1,21 @@
 # Session Handoff — main
-Generated: 2026-07-22 18:22
+Generated: 2026-07-22 18:26
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
 ## What We Were Working On
-Monthly tracking across the app. SHIPPED two features this session:
+Monthly tracking across the app. SHIPPED + prod-SMOKED two features this session:
 1. **Board "Month to date" period** — fourth toggle (Today / Week to date / Month to date / All
    time), reuses the `approved_at` filter, stat tiles relabel, per-agent subtitle follows period.
+   (commit 5deac99, live-verified)
 2. **Sportsbook monthly bet lines** — admin Create Line `#sbl-period` now offers week/month/today;
    open-line settle label maps month→"month-to-date". Both purely client-side, no migration.
+   (commit 615df4c, live-verified)
 
 ## Remaining Work
-- No open code work. APP_VERSION `2026-07-22-sportsbook-month-line-001`.
-- Not done (intentional): auto-generate matchups (`generateMatchups`) still hardcodes weekly period
-  — its stated purpose. Add month support there only if owner asks.
+- No open code work. Both features shipped, on prod, smoked. APP_VERSION
+  `2026-07-22-sportsbook-month-line-001`. One uncommitted TEST_LOG.md smoke entry — commit on next push.
+- Not done (intentional): auto-generate matchups (`generateMatchups`, index.html:~1156) still
+  hardcodes `p_period:'week'` at :1198 — its stated purpose. Add month support only if owner asks.
 
 ## Key Decisions This Session
 - Month = calendar month-to-date (1st of current month → now), keyed off `approved_at`, same as the
