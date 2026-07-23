@@ -85,3 +85,28 @@
 ### Notes:
 - Settle-label map verified locally (month→"month-to-date", unknown→"week-to-date" fallback); same
   deployed bundle confirmed via version match. No prod bet line created (schema is unconstrained text).
+
+## Smoke — 2026-07-23 18:49
+
+### URL: https://fhe-scoreboard.vercel.app/#sportsbook
+### Surface: headless (Playwright MCP) + SQL (Supabase MCP)
+### Feature Under Test: Daily sportsbook matchups + 10:20 AM ET betting lock
+### Overall: PASS
+
+| Check | Result | Details |
+|-------|--------|---------|
+| Deploy landed | PASS | live APP_VERSION = 2026-07-23-sportsbook-daily-lock-001 |
+| Generation logic | PASS | generate_daily_matchups(true) created 9 h2h lines; odds/shortnames match JS port (e.g. Albert 14640 vs Owen 10125 -> 1.7/2.4; two Gabriels -> "Gabriel H."/"Gabriel T."; 0/0 -> 2.0/2.0) |
+| closes_at timezone | PASS | closes_at rendered exactly 2026-07-23 10:20 America/New_York (DST-aware) |
+| Server lock ordering | PASS | place_bet on past-deadline line -> "line closed"; future-deadline line -> reaches "invalid side" (lock passed, no coins moved) |
+| closes_at exposed | PASS | column present on bet_lines; get_open_lines/get_all_lines_admin use SELECT * |
+| Open-line UI (prod) | PASS | OPEN -> "Book closes 10:20 AM ET" + bet buttons; CLOSED -> "Betting closed at 10:20 AM ET" + locked message, buttons hidden |
+| Route: /#sportsbook | PASS | only console error = favicon.ico 404 (pre-existing, benign) |
+| pg_cron scheduled | PASS | job 'daily-matchups' active, schedule '0 12,13 * * 1-5' |
+| Weekly cleanup | PASS | 14 open weekly lines cancelled, 13 pending bets refunded; 0 open lines remain |
+
+### Notes:
+- 10:20 lock enforced server-side in place_bet (closes_at check) so it can't be bypassed client-side.
+- cron fires 12:00 & 13:00 UTC Mon-Fri; function no-ops unless it's the 8 AM NY hour -> exactly one 8 AM run under both EDT and EST.
+- UI states verified with mock data via loadOpenLines (no prod bet lines created). Screenshot: ../smoke-scoreboard-daily-lock-2026-07-23.png
+- First real auto-generated board arrives Fri 2026-07-24 at 8:00 AM ET.
