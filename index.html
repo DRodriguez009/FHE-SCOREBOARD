@@ -458,7 +458,7 @@ select option{background:#020802}
     <!-- MANAGER: CREATE LINE -->
     <div class="card" id="sb-manager-tools" style="display:none">
       <div class="card-title">⚡ Auto-Generate Matchups</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Pairs the whole roster into head-to-head lines ranked by this week's commission, with odds set from recent performance. Skips pairings that already have an open line.</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Runs automatically every weekday at 8:00 AM ET — pairs the whole roster into head-to-head lines on today's commission, odds from trailing-4-week performance, and closes the book at 10:20 AM ET. Use this button only to generate today's board early or re-run it; it skips pairings that already have an open line.</div>
       <button class="btn btn-primary" id="sb-gen-btn" onclick="generateMatchups()"><span id="sb-gen-spin" style="display:none"><span class="spinner"></span></span>⚡ Generate Matchups</button>
       <div id="sb-gen-alert" style="margin-top:10px"></div>
       <hr style="border:none;border-top:1px solid var(--border,#333);margin:1.25rem 0">
@@ -1135,77 +1135,19 @@ async function suggestOdds(){
 }
 
 // Compute favorite/underdog odds for a pair from trailing 4-week commission (same model as suggestOdds)
-function oddsForPair(totalA,totalB){
-  const sum=totalA+totalB;
-  if(sum===0)return[2.0,2.0];
-  const probA=totalA/sum,probB=totalB/sum;
-  const oA=Math.max(1.2,Math.min(5,Math.round((1/Math.max(probA,0.1))*10)/10));
-  const oB=Math.max(1.2,Math.min(5,Math.round((1/Math.max(probB,0.1))*10)/10));
-  return[oA,oB];
-}
-// Short display name for titles: first name, plus last initial when another agent
-// in the roster shares that first name (e.g. two Gabriels → "Gabriel T." / "Gabriel H.")
-function shortName(agent,firstNameCounts){
-  const parts=(agent.name||'').trim().split(/\s+/);
-  const first=parts[0]||agent.name||'';
-  if((firstNameCounts[first.toLowerCase()]||0)>1&&parts.length>1){
-    return `${first} ${parts[parts.length-1][0].toUpperCase()}.`;
-  }
-  return first;
-}
+// Manual trigger for the same daily generator the 8 AM ET cron runs. Server-side
+// (admin_generate_daily_matchups) pairs the roster by trailing-4-week commission,
+// prices odds, and stamps today's 10:20 AM ET betting deadline (closes_at).
 async function generateMatchups(){
   if(!sbCurrentBettor||sbCurrentBettor.type!=='manager')return;
+  if(!currentAdmin||!currentAdmin.username){alert$('sb-gen-alert','Sign in on the Admin tab first, then generate.','error');return;}
   alert$('sb-gen-alert','','');
   document.getElementById('sb-gen-spin').style.display='inline';
   document.getElementById('sb-gen-btn').disabled=true;
   try{
-    const[agents,feed,openLines]=await Promise.all([
-      rpc('get_agents_board',{}),
-      rpc('get_public_commission_feed',{}),
-      rpc('get_open_lines',{}),
-    ]);
-    // Week-to-date total per agent (ranking signal)
-    const weekStart=startOfWeek();
-    const weekTotal={};agents.forEach(a=>{weekTotal[a.id]=0;});
-    feed.forEach(c=>{if(c.approved_at&&new Date(c.approved_at)>=weekStart&&weekTotal[c.agent_id]!==undefined)weekTotal[c.agent_id]+=Number(c.amount);});
-    // Trailing 4-week total per agent (odds signal)
-    const fourWeeksAgo=new Date();fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
-    const recentTotal={};agents.forEach(a=>{recentTotal[a.id]=0;});
-    feed.forEach(c=>{if(c.approved_at&&new Date(c.approved_at)>=fourWeeksAgo&&recentTotal[c.agent_id]!==undefined)recentTotal[c.agent_id]+=Number(c.amount);});
-    // Rank whole roster by week-to-date desc, then name for stability
-    const ranked=agents.slice().sort((a,b)=>(weekTotal[b.id]-weekTotal[a.id])||a.name.localeCompare(b.name));
-    // Existing open head-to-head pairs (dedupe, order-independent) by id and by name
-    const existing=new Set();
-    (openLines||[]).filter(l=>l.type==='head_to_head').forEach(l=>{
-      if(l.agent_a_id&&l.agent_b_id)existing.add([String(l.agent_a_id),String(l.agent_b_id)].sort().join('|'));
-      if(l.agent_a_name&&l.agent_b_name)existing.add([l.agent_a_name,l.agent_b_name].sort().join('|'));
-    });
-    // Count first names across the roster so we only add a last initial when it's needed
-    const firstNameCounts={};agents.forEach(a=>{const f=((a.name||'').trim().split(/\s+/)[0]||'').toLowerCase();firstNameCounts[f]=(firstNameCounts[f]||0)+1;});
-    const weekLabel=weekStart.toLocaleDateString(undefined,{month:'short',day:'numeric'});
-    let created=0,skipped=0;
-    for(let i=0;i+1<ranked.length;i+=2){
-      const a=ranked[i],b=ranked[i+1];
-      const idKey=[String(a.id),String(b.id)].sort().join('|');
-      const nameKey=[a.name,b.name].sort().join('|');
-      if(existing.has(idKey)||existing.has(nameKey)){skipped++;continue;}
-      const[oddsA,oddsB]=oddsForPair(recentTotal[a.id]||0,recentTotal[b.id]||0);
-      const fA=shortName(a,firstNameCounts),fB=shortName(b,firstNameCounts);
-      await rpc('create_bet_line',{
-        p_username:currentAdmin.username,p_password:currentAdmin.password,
-        p_type:'head_to_head',p_title:`${fA} vs ${fB} — Week of ${weekLabel}`,
-        p_description:'Auto-generated matchup — bet on who books more commission this week.',
-        p_period:'week',
-        p_agent_a_id:a.id,p_agent_a_name:a.name,p_agent_b_id:b.id,p_agent_b_name:b.name,
-        p_odds_a:oddsA,p_odds_b:oddsB,p_threshold:null,p_odds_over:2.0,p_odds_under:2.0,
-        p_odds_yes:2.0,p_odds_no:2.0,
-      });
-      existing.add(idKey);existing.add(nameKey);
-      created++;
-    }
-    const unpaired=ranked.length%2===1?` (${esc(ranked[ranked.length-1].name.split(/\s+/)[0])} had no opponent this round)`:'';
-    if(created===0&&skipped>0)alert$('sb-gen-alert',`All ${skipped} matchup(s) already have open lines — nothing new to add.${unpaired}`,'info');
-    else alert$('sb-gen-alert',`Created ${created} matchup${created===1?'':'s'}${skipped?`, skipped ${skipped} already open`:''}.${unpaired} Agents can bet now.`,'success');
+    const created=Number(await rpc('admin_generate_daily_matchups',{p_username:currentAdmin.username,p_password:currentAdmin.password}))||0;
+    if(created===0)alert$('sb-gen-alert','No new matchups — every pairing already has an open line today.','info');
+    else alert$('sb-gen-alert',`Created ${created} daily matchup${created===1?'':'s'}. Betting is open until 10:20 AM ET.`,'success');
     loadSportsbook();
   }catch(e){alert$('sb-gen-alert','Error generating matchups. Check your admin session and try again.','error');}
   document.getElementById('sb-gen-spin').style.display='none';
@@ -1274,21 +1216,37 @@ function lineSidesHtml(line,forBetting){
   }
 }
 
+// Betting deadline shown in Eastern time for every viewer, whatever their own timezone.
+function closesAtET(line){
+  if(!line.closes_at)return'';
+  return new Date(line.closes_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+}
 async function loadOpenLines(){
   const lines=await rpc('get_open_lines',{});
   const el=document.getElementById('sb-open-lines');
   if(!lines||!lines.length){el.innerHTML='<div class="empty">No open lines right now — check back soon!</div>';return;}
-  el.innerHTML=lines.map(line=>`<div class="entry-row">
+  const now=Date.now();
+  el.innerHTML=lines.map(line=>{
+    const closed=line.closes_at&&now>=new Date(line.closes_at).getTime();
+    const t=closesAtET(line);
+    const windowLine=line.closes_at?(closed
+      ?`<div style="font-size:11px;color:#f07070;font-weight:600">🔒 Betting closed at ${t} ET</div>`
+      :`<div style="font-size:11px;color:var(--orange2);font-weight:600">⏳ Book closes ${t} ET</div>`):'';
+    const sides=closed
+      ?`<div style="font-size:12px;color:#f07070">Betting is locked for this matchup — winners settle on today's commission.</div>`
+      :`<div class="flex" style="gap:8px;flex-wrap:wrap">${lineSidesHtml(line,true)}</div>`;
+    return`<div class="entry-row">
     <div class="flex-between" style="margin-bottom:6px">
       <div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(line.title)}</div>
         <div style="font-size:11px;color:var(--muted)">${lineLabel(line)} · Settles on ${({week:'week-to-date',month:'month-to-date',today:"today's"}[line.period]||'week-to-date')} commission</div>
+        ${windowLine}
       </div>
-      <span class="badge badge-pending">OPEN</span>
+      <span class="badge ${closed?'badge-rejected':'badge-pending'}">${closed?'🔒 CLOSED':'OPEN'}</span>
     </div>
     ${line.description?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${esc(line.description)}</div>`:''}
-    <div class="flex" style="gap:8px;flex-wrap:wrap">${lineSidesHtml(line,true)}</div>
-  </div>`).join('');
+    ${sides}
+  </div>`;}).join('');
 }
 
 let pendingBet={lineId:null,side:null};
@@ -1325,6 +1283,7 @@ async function confirmBet(){
     const msg=(e&&e.message)||'';
     if(msg.includes('insufficient balance'))alert("You don't have enough Mike Coins for that bet.");
     else if(msg.includes('exceeds max bet'))alert('Max bet is 50% of your balance.');
+    else if(msg.includes('line closed')){alert('Betting is closed for this matchup — the book locked at 10:20 AM ET.');closeBetModal();loadSportsbook();}
     else if(msg.includes('line not open')){alert('This line is no longer open.');closeBetModal();loadSportsbook();}
     else alert$('sb-alert','Error placing bet.','error');
   }
@@ -1720,7 +1679,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_comm
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-22-sportsbook-month-line-001';
+const APP_VERSION='2026-07-23-sportsbook-daily-lock-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
