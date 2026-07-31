@@ -1,36 +1,36 @@
 # Session Handoff — main
-Generated: 2026-07-22 18:26
+Generated: 2026-07-31 (sportsbook payout fix)
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
 ## What We Were Working On
-Monthly tracking across the app. SHIPPED + prod-SMOKED two features this session:
-1. **Board "Month to date" period** — fourth toggle (Today / Week to date / Month to date / All
-   time), reuses the `approved_at` filter, stat tiles relabel, per-agent subtitle follows period.
-   (commit 5deac99, live-verified)
-2. **Sportsbook monthly bet lines** — admin Create Line `#sbl-period` now offers week/month/today;
-   open-line settle label maps month→"month-to-date". Both purely client-side, no migration.
-   (commit 615df4c, live-verified)
+Fixed "agents aren't getting paid out their sportsbook bets." The daily switch (Jul 23)
+auto-generates + locks matchups but never settled them — settlement was manual and nobody did it,
+so 13 bets sat `pending` (coins taken at bet time, never resolved) across Jul 24/27/30. Added
+automatic settlement by commission + backfilled the backlog. DB-only; no client/deploy change.
 
 ## Remaining Work
-- No open code work. Both features shipped, on prod, smoked. APP_VERSION
-  `2026-07-22-sportsbook-month-line-001`. One uncommitted TEST_LOG.md smoke entry — commit on next push.
-- Not done (intentional): auto-generate matchups (`generateMatchups`, index.html:~1156) still
-  hardcodes `p_period:'week'` at :1198 — its stated purpose. Add month support only if owner asks.
+- No open code work — fix shipped, backlog paid, verified.
+- Watch item (next session): confirm the new cron `auto-settle-matchups` fires Mon 2026-08-03
+  ~11:30 UTC and settles Friday's board:
+  `select * from cron.job_run_details where jobid=(select jobid from cron.job where jobname='auto-settle-matchups') order by start_time desc limit 3;`
+  Then confirm 0 stale open head_to_head lines remain from prior days.
 
 ## Key Decisions This Session
-- Month = calendar month-to-date (1st of current month → now), keyed off `approved_at`, same as the
-  other periods. New helper `startOfMonth()` at index.html:705.
-- Subtitle follows the selected period (owner picked this over keeping a constant week-to-date line).
-  Retired the always-computed `weekTotals`/`weekCounts`; subtitle uses the period totals + `subLabel`.
+- Settlement is now AUTOMATIC by commission (owner approved). Winner = higher approved commission on
+  the matchup day (same metric as board 'Today' view). Manual settle buttons kept as an override.
+- Ties = refund both sides (push).
+- Auto-settle runs 11:30 UTC weekdays — after midnight (prior day complete), before 8 AM generation.
+- Fix is DB-only (functions + pg_cron). No index.html change, no Vercel deploy, APP_VERSION unchanged.
 
 ## Kickstart Prompt
-> Read .claude/sessions/main.md. Single static `index.html` on Vercel (project fhe-scoreboard), its
-> OWN Supabase `sralgaskfktcynpdxjhj` (NOT shared eawp). Board period toggle has 4 periods —
-> Today/Week to date/Month to date/All time — driven by `setPeriod()`, `filterByPeriod()` (index.html
-> :869), and date helpers `startOfToday`/`startOfWeek`/`startOfMonth` (:702-705); all filter on
-> `approved_at`. Stat-tile labels come from `pLabel`, per-agent subtitle from `subLabel` (both keyed
-> to currentPeriod in `loadBoard()`). The `.section-tab` pill row (agent portal ~:394 + admin ~:580)
-> mirrors the FHE Command Center's 7 sections linking to `fhe-command-center.vercel.app/<section>`.
-> To edit live locally: `python3 -m http.server <port>` over http:// (Supabase CORS). Bump
-> APP_VERSION on any client-JS change. Ship branch→main directly (owner preference for FHE solo
-> repos, no branch-protection ruleset). Do NOT point at the shared eawp Supabase.
+> Read .claude/sessions/main.md. Single static `index.html` on Vercel (project fhe-scoreboard) with
+> its OWN Supabase `sralgaskfktcynpdxjhj` (NOT shared eawp). Sportsbook is DAILY: pg_cron
+> 'daily-matchups' (0 12,13 * * 1-5) → `generate_daily_matchups()` creates ~9 head_to_head lines at
+> 8 AM NY, book locks 10:20 AM ET (server-side closes_at in place_bet). As of 2026-07-31 settlement
+> is AUTOMATIC: pg_cron 'auto-settle-matchups' (30 11 * * 1-5) → `auto_settle_daily_matchups()`
+> settles any open head_to_head line whose matchup day is over, paying winners via `credit_wallet`
+> (winner = higher approved commission that NY day; tie = refund + cancel). Idempotent/self-healing;
+> admin override = `admin_auto_settle_daily_matchups(user,pass)` + the manual settle buttons.
+> Migration: supabase/migrations/20260731130000_sportsbook_auto_settle_daily_matchups.sql. To edit
+> live locally: `python3 -m http.server <port>` over http:// (Supabase CORS); bump APP_VERSION on any
+> client-JS change; ship branch→main directly (owner preference, no ruleset). Do NOT point at eawp.

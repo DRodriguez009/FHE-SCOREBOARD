@@ -537,3 +537,74 @@
   next push). Only prod console noise is a benign favicon.ico 404.
 - Next possible task (owner's call, NOT started): add month support to Auto-Generate Matchups
   (`generateMatchups` in index.html:~1156, currently hardcodes `p_period:'week'` at :1198).
+
+## Session — 2026-07-23 18:55 (wt: fhe-scoreboard)
+
+### Work Done
+- Shipped DAILY sportsbook + 10:20 AM ET betting lock (commit 6d76eab, prod-smoked, live as
+  APP_VERSION 2026-07-23-sportsbook-daily-lock-001).
+  - DB (project sralgaskfktcynpdxjhj): added `bet_lines.closes_at`; enabled `pg_cron`;
+    `odds_for_pair()` + `generate_daily_matchups(p_force)` (SQL port of the old client JS pairing/odds
+    — ranks & prices on trailing-4-week approved commission, period='today', closes_at = today 10:20
+    America/New_York, DST-aware, weekday+8AM-NY guard); `place_bet` now rejects wagers past closes_at
+    ('line closed'); `admin_generate_daily_matchups()` admin wrapper (raw generator revoked from
+    anon/authenticated). Migration file: supabase/migrations/20260723190000_sportsbook_daily_matchups.sql
+  - Cron job 'daily-matchups' schedule '0 12,13 * * 1-5'; function no-ops unless 8 AM NY hour →
+    exactly one 8 AM run under both EDT and EST. First real board = Fri 2026-07-24 08:00 ET.
+  - Client (index.html): removed client-side oddsForPair/shortName + old weekly loop; `generateMatchups`
+    now calls admin_generate_daily_matchups. loadOpenLines shows "⏳ Book closes 10:20 AM ET" →
+    "🔒 CLOSED" (closesAtET() formats in ET for all viewers), hides bet buttons when closed;
+    confirmBet maps 'line closed'. Auto-Generate card copy updated.
+  - One-time: cancelled + refunded the 14 open weekly lines (13 pending bets refunded).
+- Fixed pre-existing bug: admin_remove_agent failed via FK when agent was in any bet_lines row.
+  Now refund+cancel their open lines, null FK ids on historical lines (names are text, history kept),
+  then delete. Removed Kumar Ritibh (18 agents remain). commit 31c0e66,
+  supabase/migrations/20260723193000_fix_admin_remove_agent_bet_line_fk.sql
+
+### Decisions
+- "Close the book" = lock new bets only (settlement stays manual by manager, later, on today's
+  commission). Betting window 8:00–10:20 AM ET, weekdays only.
+- Lock enforced server-side in place_bet (closes_at) so it holds even if cron hiccups — cron only
+  GENERATES. Ranking+odds signal = trailing 4 weeks (today is empty at 8 AM generation time).
+- 10:20 means New York local time (DST-aware), not fixed UTC-5.
+- Agent removal cascades commission history (pre-existing behavior). If owner wants soft-deactivate
+  instead (hide from board/matchups, keep numbers), that's a separate larger change — NOT started.
+
+### Where Left Off
+- DONE — nothing open. main clean, all pushed (HEAD 31c0e66). Board is empty tonight by design;
+  first auto-generated daily matchups land Fri 2026-07-24 08:00 ET.
+- Watch item: confirm the cron actually fires Fri 8 AM ET (check `select * from cron.job_run_details
+  where jobid=(select jobid from cron.job where jobname='daily-matchups') order by start_time desc`).
+- Possible follow-up (owner's call, NOT started): soft-deactivate agents instead of hard delete.
+
+## Session — 2026-07-31 (wt: fhe-scoreboard)
+
+### Work Done
+- BUG: "agents aren't getting paid out their bets in the sportsbook." Root cause: the daily
+  switch (Jul 23) auto-GENERATES + locks matchups but never SETTLED them — settlement was manual
+  and no manager ever did it. 13 bets sat `pending` (coins debited at bet time, never resolved)
+  across Jul 24/27/30; winners unpaid. `settle_bet_line`/`credit_wallet` themselves were fine —
+  the settle step just never fired.
+- Fix (DB-only, project sralgaskfktcynpdxjhj):
+  - Added `auto_settle_daily_matchups()` + `admin_auto_settle_daily_matchups()` (admin wrapper).
+    Settles any open head_to_head line whose matchup day (NY date of created_at) is fully over.
+    Winner = higher approved commission on the matchup day (same metric as board 'Today':
+    status='approved', bucketed by approved_at NY date). Tie => refund all pending + cancel line.
+    Idempotent + self-healing (only touches still-open completed-day lines).
+  - Scheduled pg_cron job `auto-settle-matchups` ('30 11 * * 1-5') — 6:30/7:30 AM NY, before the
+    8 AM generation run (`daily-matchups` at 0 12,13 UTC).
+  - Ran it once to backfill: 19 lines settled (12 with bets + 7 stale bet-less). 13 pending → 14
+    won / 3 lost; 0 pending, 0 open h2h lines remain. Payouts (1,271 coins) verified vs pre-snapshot:
+    Albert Gonzalez +274→1309, Javier Hernandez +909→1344, Arturo Perez +58→578, Nelson Santos +30→470.
+  - Recorded supabase/migrations/20260731130000_sportsbook_auto_settle_daily_matchups.sql + TEST_LOG entry.
+
+### Decisions
+- Auto-settle by commission going forward (owner approved) — manual settle buttons kept as override
+  for commission corrections. Ties refund both sides (push).
+- No client change / no Vercel deploy: fix is entirely DB functions + cron; app already renders
+  settled/won states. APP_VERSION unchanged.
+
+### Where Left Off
+- DONE — payout bug fixed, backlog paid, recurrence prevented. main clean after this push.
+- Watch item: confirm `auto-settle-matchups` fires Mon 2026-08-03 ~11:30 UTC and settles Fri's board
+  (`select * from cron.job_run_details where jobid=(select jobid from cron.job where jobname='auto-settle-matchups') order by start_time desc limit 3;`).

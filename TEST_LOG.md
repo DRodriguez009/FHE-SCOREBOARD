@@ -1,5 +1,34 @@
 # TEST_LOG.md
 
+## Fix + Verify — 2026-07-31 (sportsbook payouts not landing)
+
+### Feature Under Test: Daily sportsbook auto-settlement + backfill of unpaid bets
+### Result: PASS
+
+**Root cause:** the daily switch (2026-07-23) auto-generated + locked matchups but never
+settled them — settlement was manual and no manager ever did it. Result: 13 bets sat
+`pending` (coins debited at bet time, never resolved) across Jul 24-30; winners unpaid.
+
+**Fix:** added `auto_settle_daily_matchups()` (+ `admin_` wrapper) + `pg_cron` job
+`auto-settle-matchups` (`30 11 * * 1-5`, runs before the 8 AM generation). Winner =
+higher approved commission on the matchup day (same metric as the board's Today view).
+Tie => refund + cancel. Idempotent / self-healing. Ran it once to backfill.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| Backfill run | PASS | `auto_settle_daily_matchups()` returned 19 lines settled (12 with bets + 7 stale bet-less) |
+| Bets resolved | PASS | 13 pending → 14 won / 3 lost; 0 pending remain |
+| Payouts credited | PASS | Albert 1035→1309 (+274), Arturo 520→578 (+58), Javier 435→1344 (+909), Nelson 440→470 (+30) = 1,271 coins, matches predicted |
+| Open h2h lines | PASS | 0 remaining (all resolved) |
+| Winner logic | PASS | Every stuck line had a clear commission winner; matched hand-computed table |
+| cron registered | PASS | `auto-settle-matchups` active, ordered before `daily-matchups` (12/13 UTC) |
+
+### Notes:
+- Server-side only (DB functions + cron). No `index.html` / client change; the app already
+  renders settled/won states, so no Vercel deploy or APP_VERSION bump needed.
+- Migration recorded at supabase/migrations/20260731130000_sportsbook_auto_settle_daily_matchups.sql.
+- Managers retain the manual settle buttons as an override if a commission correction changes a winner.
+
 ## Smoke — 2026-07-03 17:24
 
 ### URL: https://fhe-scoreboard.vercel.app
