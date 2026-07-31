@@ -519,6 +519,11 @@ select option{background:#020802}
     <div class="section-label">My Bet History</div>
     <div class="entry-list" id="sb-my-bets"><div class="empty"><span class="spinner"></span> Loading...</div></div>
 
+    <!-- MIKE COINS STANDINGS -->
+    <div class="section-label">🪙 Mike Coins Standings (All Agents)</div>
+    <div style="font-size:12px;color:var(--muted);margin:-4px 0 10px">Total Mike Coins balance — every approved sale earns +10, plus sportsbook winnings.</div>
+    <div class="entry-list" id="sb-coins-standings"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+
     <!-- TOP BETTOR LEADERBOARD -->
     <div class="section-label">🏆 Top Bettors (All Participants)</div>
     <div class="entry-list" id="sb-bettor-leaderboard"><div class="empty"><span class="spinner"></span> Loading...</div></div>
@@ -1088,7 +1093,20 @@ async function loadSportsbook(){
   }
   await loadOpenLines();
   await loadMyBets();
+  await loadCoinsStandings();
   await loadBettorLeaderboard();
+}
+
+async function loadCoinsStandings(){
+  const agents=await rpc('get_agents_board',{});
+  const el=document.getElementById('sb-coins-standings');
+  if(!agents||!agents.length){el.innerHTML='<div class="empty">No agents yet</div>';return;}
+  const ranked=agents.map(a=>({name:a.name,coins:Number(a.coins)||0})).sort((a,b)=>b.coins-a.coins||a.name.localeCompare(b.name));
+  const rank=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':String(i+1);
+  el.innerHTML=ranked.map((a,i)=>`<div class="entry-row flex-between">
+    <div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:800;color:var(--gold);width:28px;text-align:center">${rank(i)}</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;text-transform:uppercase">${esc(a.name)}</span></div>
+    <span style="font-weight:700;color:var(--orange)">🪙 ${a.coins.toLocaleString()}</span>
+  </div>`).join('');
 }
 
 async function loadAgentDropdownsForLines(){
@@ -1679,7 +1697,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_comm
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-23-sportsbook-daily-lock-001';
+const APP_VERSION='2026-07-31-mike-coins-standings-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
