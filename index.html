@@ -938,9 +938,10 @@ async function agentLogin(){
   document.getElementById('agent-portal-section').style.display='block';
   loadAgentView();
 }
-function agentLogout(){
-  const tok=currentAgent&&currentAgent.token;
-  if(tok)rpc('sb_end_session',{p_token:tok}).catch(()=>{});
+async function agentLogout(){
+  // Read the token from storage, not from in-memory state: if currentAgent was
+  // already cleared the revoke would silently no-op and leave a live token behind.
+  await revokeStoredSession(AGENT_SESSION_KEY,currentAgent&&currentAgent.token);
   currentAgent=null;sessionStorage.removeItem(AGENT_SESSION_KEY);document.getElementById('agent-login-section').style.display='block';document.getElementById('agent-portal-section').style.display='none';document.getElementById('al-name').value='';document.getElementById('al-pin').value='';
 }
 
@@ -1434,9 +1435,18 @@ async function adminLogin(){
   }
 }
 
-function adminLogout(){
-  const tok=currentAdmin&&currentAdmin.token;
-  if(tok)rpc('sb_end_session',{p_token:tok}).catch(()=>{});
+// Revoke a session server-side so signing out actually invalidates the token
+// rather than merely forgetting it locally. Prefers the stored token and falls
+// back to whatever is in memory; awaited so the request cannot be cut short.
+async function revokeStoredSession(storageKey,fallbackToken){
+  let tok=fallbackToken||null;
+  try{const s=JSON.parse(sessionStorage.getItem(storageKey)||'{}');if(s&&s.token)tok=s.token;}catch(e){}
+  if(!tok)return;
+  try{await rpc('sb_end_session',{p_token:tok});}catch(e){}
+}
+
+async function adminLogout(){
+  await revokeStoredSession(ADMIN_SESSION_KEY,currentAdmin&&currentAdmin.token);
   currentAdmin=null;adminAuthed=false;selectedMgrUsername=null;
   sessionStorage.removeItem(ADMIN_SESSION_KEY);
   document.getElementById('admin-login-section').style.display='block';
