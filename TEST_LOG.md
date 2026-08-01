@@ -172,3 +172,27 @@ Tie => refund + cancel. Idempotent / self-healing. Ran it once to backfill.
       hide (names are on a wall-mounted board) but it is what makes targeted guessing easy.
 - [ ] Pin-only / shared-password RPCs in the *other* FHE apps remain unguarded — see the
       Phase 4 login-unification work.
+
+## Black-box security audit — 2026-08-01 (post org-transfer)
+
+Supabase MCP access was lost when the project moved to the FHE org, so `get_advisors`
+could not run. Verified externally instead, using the anon key published in this public
+repo — i.e. from the attacker's actual position. Arguably a stronger check than the
+linter for the auth changes.
+
+| Lint / attack | Result |
+|---|---|
+| anon direct read of any table (9 tables incl. new `auth_sessions`, `login_attempts`) | PASS — all 42501 insufficient_privilege |
+| internal SECURITY DEFINER helpers callable by anon (5 fns) | PASS — all revoked; Postgres' default grant to PUBLIC was correctly stripped |
+| intentionally-public RPCs still reachable (4 fns) | PASS |
+| agent token used on an admin endpoint | PASS — rejected |
+| agent token used as a `manager` bettor | PASS — false |
+| agent A's token reading agent B's commissions (horizontal escalation) | PASS — rejected |
+| null token as a bypass | PASS — false, not NULL; confirms the `coalesce(...,false)` in `verify_bettor` is load-bearing |
+| cross-account token misuse (Derrick's token sent as `jordankyles`) | PASS — rejected |
+
+### Not externally verifiable — outstanding:
+- `function_search_path_mutable`: every function in these migrations sets an explicit
+  `search_path`, confirmed in the applied migration text, but not independently linted.
+- Performance advisors (indexes etc.) — not security, not urgent.
+- Re-run `get_advisors` once the Supabase MCP grant is re-authorized against the FHE org.
