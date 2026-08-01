@@ -139,3 +139,36 @@ Tie => refund + cancel. Idempotent / self-healing. Ran it once to backfill.
 - cron fires 12:00 & 13:00 UTC Mon-Fri; function no-ops unless it's the 8 AM NY hour -> exactly one 8 AM run under both EDT and EST.
 - UI states verified with mock data via loadOpenLines (no prod bet lines created). Screenshot: ../smoke-scoreboard-daily-lock-2026-07-23.png
 - First real auto-generated board arrives Fri 2026-07-24 at 8:00 AM ET.
+
+## Security hardening — 2026-08-01
+
+### Feature Under Test: session-token auth, hashed agent PINs, brute-force lockout
+### Result: PASS
+
+| Test | Result | Notes |
+|------|--------|-------|
+| Admin login (Derrick / correct PIN) | PASS | returns 64-char token; sessionStorage holds `{token}` only, no password |
+| `get_agents_admin` with TOKEN | PASS | returns roster, `has_pin` boolean, no plaintext PIN |
+| `get_agents_admin` with RAW PASSWORD | PASS | rejected — the pre-fix brute-force pivot is closed |
+| `admin_approve_commission` with TOKEN | PASS | authorizes (bogus id no-ops, no auth error) |
+| `admin_approve_commission` with RAW PASSWORD | PASS | rejected |
+| Cross-account token misuse | PASS | Derrick's token sent as `jordankyles` → rejected |
+| Brute force: 10 bad logins on a dummy identity | PASS | counter caps at 8, 15-min lock set, tries 9–10 short-circuit |
+| Lockout indistinguishable from bad PIN | PASS | both return `[]` — no lock-vs-badpin oracle |
+| Agent login (Aaron Matthews / sheet PIN) | PASS | works against bcrypt `pin_hash`; hashing lost nothing |
+| Admin → Agents tab | PASS | PINs render as `••••`, Reset PIN button present, no plaintext |
+| Reload persistence | PASS | restores via `sb_session_whoami`, never replays the secret |
+| Sign-out revokes token server-side | PASS | *after* a fix — see below |
+| Console errors | PASS | 0 (bar a pre-existing favicon 404) |
+
+### Bug found and fixed during verification:
+- `agentLogout`/`adminLogout` read the token from in-memory state and fired the revoke
+  without awaiting. Verified against prod that a sign-out left the token **live for 12h** —
+  "signed out" only meant the browser forgot it. Fixed to read from sessionStorage and
+  await the revoke; re-verified `sb_session_whoami` returns empty after sign-out.
+
+### Known gaps / follow-ups:
+- [ ] `list_admin_names()` is anon-callable and enumerates admin usernames. Low value to
+      hide (names are on a wall-mounted board) but it is what makes targeted guessing easy.
+- [ ] Pin-only / shared-password RPCs in the *other* FHE apps remain unguarded — see the
+      Phase 4 login-unification work.
