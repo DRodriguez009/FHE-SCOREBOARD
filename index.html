@@ -806,7 +806,7 @@ async function setAnnouncement(){
   const msg=document.getElementById('announce-input').value.trim();
   if(!msg)return;
   try{
-    await rpc('admin_set_announcement',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_message:msg});
+    await rpc('admin_set_announcement',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_message:msg});
     showAnnouncement(msg);
     document.getElementById('announce-input').value='';
     alert$('admin-alert','Announcement posted! All agents will see it.','success');
@@ -814,7 +814,7 @@ async function setAnnouncement(){
 }
 async function clearAnnouncement(){
   try{
-    await rpc('admin_set_announcement',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_message:null});
+    await rpc('admin_set_announcement',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_message:null});
     showAnnouncement(null); // falls back to today's motivational quote
     alert$('admin-alert','Announcement cleared.','info');
   }catch(e){alert$('admin-alert','Error clearing announcement.','error');}
@@ -929,24 +929,34 @@ async function agentLogin(){
   try{const rows=await rpc('verify_agent_login',{p_name:name,p_pin:pin});agent=rows&&rows[0]?rows[0]:null;}catch(e){}
   document.getElementById('al-spin').style.display='none';
   if(!agent){alert$('al-alert','Name or PIN not found. Contact your admin.','error');return;}
-  currentAgent={...agent,pin};
-  sessionStorage.setItem(AGENT_SESSION_KEY,JSON.stringify({name,pin}));
+  currentAgent={...agent};
+  // Only the server-issued session token is retained. The PIN itself is never kept
+  // in memory or storage, and is never sent again after this one login call.
+  sessionStorage.setItem(AGENT_SESSION_KEY,JSON.stringify({token:agent.token}));
   document.getElementById('agent-welcome').textContent='Welcome, '+agent.name;
   document.getElementById('agent-login-section').style.display='none';
   document.getElementById('agent-portal-section').style.display='block';
   loadAgentView();
 }
-function agentLogout(){currentAgent=null;sessionStorage.removeItem(AGENT_SESSION_KEY);document.getElementById('agent-login-section').style.display='block';document.getElementById('agent-portal-section').style.display='none';document.getElementById('al-name').value='';document.getElementById('al-pin').value='';}
+function agentLogout(){
+  const tok=currentAgent&&currentAgent.token;
+  if(tok)rpc('sb_end_session',{p_token:tok}).catch(()=>{});
+  currentAgent=null;sessionStorage.removeItem(AGENT_SESSION_KEY);document.getElementById('agent-login-section').style.display='block';document.getElementById('agent-portal-section').style.display='none';document.getElementById('al-name').value='';document.getElementById('al-pin').value='';
+}
 
 async function restoreAgentSession(){
   const stored=sessionStorage.getItem(AGENT_SESSION_KEY);
   if(!stored)return;
   let creds;
   try{creds=JSON.parse(stored);}catch(e){sessionStorage.removeItem(AGENT_SESSION_KEY);return;}
-  let agent=null;
-  try{const rows=await rpc('verify_agent_login',{p_name:creds.name,p_pin:creds.pin});agent=rows&&rows[0]?rows[0]:null;}catch(e){}
-  if(!agent){sessionStorage.removeItem(AGENT_SESSION_KEY);return;}
-  currentAgent={...agent,pin:creds.pin};
+  if(!creds.token){sessionStorage.removeItem(AGENT_SESSION_KEY);return;}
+  // Re-validate the token server-side. No PIN is involved, so a reload cannot
+  // contribute to the brute-force counter.
+  let who=null;
+  try{const rows=await rpc('sb_session_whoami',{p_token:creds.token});who=rows&&rows[0]?rows[0]:null;}catch(e){}
+  if(!who||who.principal!=='agent'){sessionStorage.removeItem(AGENT_SESSION_KEY);return;}
+  const agent={id:who.identity,name:who.display_name,token:creds.token};
+  currentAgent={...agent};
   document.getElementById('agent-welcome').textContent='Welcome, '+agent.name;
   document.getElementById('agent-login-section').style.display='none';
   document.getElementById('agent-portal-section').style.display='block';
@@ -1011,7 +1021,7 @@ function renderMotivation(){
 async function loadAgentView(){
   if(!currentAgent)return;
   renderMotivation();
-  const mine=await rpc('get_my_commissions',{p_agent_id:currentAgent.id,p_pin:currentAgent.pin});
+  const mine=await rpc('get_my_commissions',{p_agent_id:currentAgent.id,p_pin:currentAgent.token});
   const approved=mine.filter(c=>c.status==='approved');
   const todayStart=startOfToday(),weekStart=startOfWeek();
   const todayApproved=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart);
@@ -1043,26 +1053,26 @@ async function submitComm(){
   alert$('submit-alert','','');
   if(isNaN(amount)||amount<=0){alert$('submit-alert','Enter a valid dollar amount.','error');return;}
   document.getElementById('cm-spin').style.display='inline';
-  try{await rpc('submit_commission',{p_agent_id:currentAgent.id,p_pin:currentAgent.pin,p_amount:amount,p_note:note});document.getElementById('cm-amount').value='';document.getElementById('cm-note').value='';alert$('submit-alert','Submitted! Pending admin approval.','success');loadAgentView();}
+  try{await rpc('submit_commission',{p_agent_id:currentAgent.id,p_pin:currentAgent.token,p_amount:amount,p_note:note});document.getElementById('cm-amount').value='';document.getElementById('cm-note').value='';alert$('submit-alert','Submitted! Pending admin approval.','success');loadAgentView();}
   catch(e){alert$('submit-alert','Error submitting.','error');}
   document.getElementById('cm-spin').style.display='none';
 }
 
 // ══════════════════ SPORTSBOOK ══════════════════
-let sbCurrentBettor=null; // {type:'agent'|'manager', id, name, pin, adminPassword}
+let sbCurrentBettor=null; // {type:'agent'|'manager', id, name, token, adminToken}
 
 function getCurrentBettor(){
-  if(currentAgent)return{type:'agent',id:currentAgent.id,name:currentAgent.name,pin:currentAgent.pin,adminPassword:null};
-  if(adminAuthed&&currentAdmin)return{type:'manager',id:currentAdmin.username,name:currentAdmin.name,pin:null,adminPassword:currentAdmin.password};
+  if(currentAgent)return{type:'agent',id:currentAgent.id,name:currentAgent.name,token:currentAgent.token,adminToken:null};
+  if(adminAuthed&&currentAdmin)return{type:'manager',id:currentAdmin.username,name:currentAdmin.name,token:null,adminToken:currentAdmin.token};
   return null;
 }
 
 async function getBettorWallet(bettor){
-  return await rpc('get_wallet',{p_bettor_type:bettor.type,p_bettor_id:String(bettor.id),p_pin:bettor.pin,p_admin_password:bettor.adminPassword}).then(rows=>rows&&rows[0]?rows[0]:null).catch(()=>null);
+  return await rpc('get_wallet',{p_bettor_type:bettor.type,p_bettor_id:String(bettor.id),p_pin:bettor.token,p_admin_password:bettor.adminToken}).then(rows=>rows&&rows[0]?rows[0]:null).catch(()=>null);
 }
 
 async function applyHouseCreditIfNeeded(bettor){
-  try{await rpc('claim_house_credit',{p_bettor_type:bettor.type,p_bettor_id:String(bettor.id),p_pin:bettor.pin,p_admin_password:bettor.adminPassword});}catch(e){}
+  try{await rpc('claim_house_credit',{p_bettor_type:bettor.type,p_bettor_id:String(bettor.id),p_pin:bettor.token,p_admin_password:bettor.adminToken});}catch(e){}
 }
 
 async function initSportsbook(){
@@ -1163,7 +1173,7 @@ async function generateMatchups(){
   document.getElementById('sb-gen-spin').style.display='inline';
   document.getElementById('sb-gen-btn').disabled=true;
   try{
-    const created=Number(await rpc('admin_generate_daily_matchups',{p_username:currentAdmin.username,p_password:currentAdmin.password}))||0;
+    const created=Number(await rpc('admin_generate_daily_matchups',{p_username:currentAdmin.username,p_password:currentAdmin.token}))||0;
     if(created===0)alert$('sb-gen-alert','No new matchups — every pairing already has an open line today.','info');
     else alert$('sb-gen-alert',`Created ${created} daily matchup${created===1?'':'s'}. Betting is open until 10:20 AM ET.`,'success');
     loadSportsbook();
@@ -1202,7 +1212,7 @@ async function createBetLine(){
   document.getElementById('sbl-spin').style.display='inline';
   try{
     await rpc('create_bet_line',{
-      p_username:currentAdmin.username,p_password:currentAdmin.password,
+      p_username:currentAdmin.username,p_password:currentAdmin.token,
       p_type:type,p_title:title,p_description:description,p_period:period,
       p_agent_a_id:agentAId,p_agent_a_name:agentAName,p_agent_b_id:agentBId,p_agent_b_name:agentBName,
       p_odds_a:oddsA,p_odds_b:oddsB,p_threshold:threshold,p_odds_over:oddsOver,p_odds_under:oddsUnder,
@@ -1291,7 +1301,7 @@ async function confirmBet(){
   try{
     await rpc('place_bet',{
       p_bettor_type:sbCurrentBettor.type,p_bettor_id:String(sbCurrentBettor.id),
-      p_pin:sbCurrentBettor.pin,p_admin_password:sbCurrentBettor.adminPassword,
+      p_pin:sbCurrentBettor.token,p_admin_password:sbCurrentBettor.adminToken,
       p_line_id:lineId,p_side:side,p_amount:amount
     });
     closeBetModal();
@@ -1309,7 +1319,7 @@ async function confirmBet(){
 
 async function loadMyBets(){
   if(!sbCurrentBettor)return;
-  const bets=await rpc('get_my_bets',{p_bettor_type:sbCurrentBettor.type,p_bettor_id:String(sbCurrentBettor.id),p_pin:sbCurrentBettor.pin,p_admin_password:sbCurrentBettor.adminPassword}).catch(()=>[]);
+  const bets=await rpc('get_my_bets',{p_bettor_type:sbCurrentBettor.type,p_bettor_id:String(sbCurrentBettor.id),p_pin:sbCurrentBettor.token,p_admin_password:sbCurrentBettor.adminToken}).catch(()=>[]);
   const el=document.getElementById('sb-my-bets');
   if(!bets||!bets.length){el.innerHTML='<div class="empty">No bets placed yet</div>';return;}
   el.innerHTML=bets.map(b=>{
@@ -1344,7 +1354,7 @@ async function loadBettorLeaderboard(){
 
 // ── MANAGER: VIEW + SETTLE LINES ──
 async function loadManagerLines(){
-  const lines=await rpc('get_all_lines_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}).catch(()=>[]);
+  const lines=await rpc('get_all_lines_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token}).catch(()=>[]);
   const el=document.getElementById('sb-admin-lines-list');
   if(!lines||!lines.length){el.innerHTML='<div class="empty">No lines created yet</div>';return;}
   el.innerHTML=lines.map(line=>{
@@ -1371,7 +1381,7 @@ async function loadManagerLines(){
 async function settleLine(lineId,winningSide){
   if(!confirm('Settle this line and pay out winners? This cannot be undone.'))return;
   try{
-    await rpc('settle_bet_line',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_line_id:lineId,p_winning_side:winningSide});
+    await rpc('settle_bet_line',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_line_id:lineId,p_winning_side:winningSide});
     alert$('sb-alert','Line settled and payouts distributed!','success');
     loadSportsbook();
   }catch(e){alert$('sb-alert','Error settling line.','error');}
@@ -1380,7 +1390,7 @@ async function settleLine(lineId,winningSide){
 async function cancelLine(lineId){
   if(!confirm('Cancel this line and refund all bets?'))return;
   try{
-    await rpc('cancel_bet_line',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_line_id:lineId});
+    await rpc('cancel_bet_line',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_line_id:lineId});
     alert$('sb-alert','Line cancelled, all bets refunded.','info');
     loadSportsbook();
   }catch(e){alert$('sb-alert','Error cancelling line.','error');}
@@ -1409,8 +1419,9 @@ async function adminLogin(){
   try{const rows=await rpc('verify_admin_login',{p_username:user,p_password:pass});found=rows&&rows[0]?rows[0]:null;}catch(e){}
   document.getElementById('adl-spin').style.display='none';
   if(found){
-    currentAdmin={username:found.username,password:pass,name:found.name};adminAuthed=true;
-    sessionStorage.setItem(ADMIN_SESSION_KEY,JSON.stringify({username:found.username,password:pass}));
+    // Only the server-issued token is retained — the password is never stored or re-sent.
+    currentAdmin={username:found.username,token:found.token,name:found.name};adminAuthed=true;
+    sessionStorage.setItem(ADMIN_SESSION_KEY,JSON.stringify({token:found.token}));
     document.getElementById('admin-login-section').style.display='none';
     document.getElementById('admin-panel-section').style.display='block';
     document.getElementById('admin-panel-title').textContent=found.name==='Admin'?'Admin Panel':found.name+" — Admin Panel";
@@ -1424,6 +1435,8 @@ async function adminLogin(){
 }
 
 function adminLogout(){
+  const tok=currentAdmin&&currentAdmin.token;
+  if(tok)rpc('sb_end_session',{p_token:tok}).catch(()=>{});
   currentAdmin=null;adminAuthed=false;selectedMgrUsername=null;
   sessionStorage.removeItem(ADMIN_SESSION_KEY);
   document.getElementById('admin-login-section').style.display='block';
@@ -1438,10 +1451,14 @@ async function restoreAdminSession(){
   if(!stored)return;
   let creds;
   try{creds=JSON.parse(stored);}catch(e){sessionStorage.removeItem(ADMIN_SESSION_KEY);return;}
-  let found=null;
-  try{const rows=await rpc('verify_admin_login',{p_username:creds.username,p_password:creds.password});found=rows&&rows[0]?rows[0]:null;}catch(e){}
-  if(!found){sessionStorage.removeItem(ADMIN_SESSION_KEY);return;}
-  currentAdmin={username:found.username,password:creds.password,name:found.name};adminAuthed=true;
+  if(!creds.token){sessionStorage.removeItem(ADMIN_SESSION_KEY);return;}
+  // Token-only revalidation: a page reload no longer replays the password, so it
+  // cannot trip (or be used to probe) the brute-force lockout.
+  let who=null;
+  try{const rows=await rpc('sb_session_whoami',{p_token:creds.token});who=rows&&rows[0]?rows[0]:null;}catch(e){}
+  if(!who||who.principal!=='admin'){sessionStorage.removeItem(ADMIN_SESSION_KEY);return;}
+  const found={username:who.identity,name:who.display_name};
+  currentAdmin={username:found.username,token:creds.token,name:found.name};adminAuthed=true;
   document.getElementById('admin-login-section').style.display='none';
   document.getElementById('admin-panel-section').style.display='block';
   document.getElementById('admin-panel-title').textContent=found.name==='Admin'?'Admin Panel':found.name+" — Admin Panel";
@@ -1455,7 +1472,7 @@ function adminTab(tab){
 }
 
 async function loadAdmin(){
-  const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password});
+  const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token});
   const approved=comms.filter(c=>c.status==='approved');
   const todayStart=startOfToday(),weekStart=startOfWeek();
   const todayAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart).reduce((s,c)=>s+Number(c.amount),0);
@@ -1470,7 +1487,7 @@ async function loadAdmin(){
 let selectedPendingIds=new Set();
 
 async function loadPending(){
-  const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password});
+  const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token});
   const pending=comms.filter(c=>c.status==='pending');
   document.getElementById('pcnt').textContent=pending.length;
   document.getElementById('hdr-pcnt').textContent=pending.length;
@@ -1503,7 +1520,7 @@ async function bulkApprove(){
   if(!confirm(`Approve ${selectedPendingIds.size} selected commission(s)?`))return;
   const ids=[...selectedPendingIds];
   try{
-    await rpc('admin_bulk_approve_commissions',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_ids:ids});
+    await rpc('admin_bulk_approve_commissions',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_ids:ids});
     alert$('admin-alert',`${ids.length} commission(s) approved! Mike Coins awarded.`,'success');
     loadAdmin();
   }catch(e){alert$('admin-alert','Error approving some commissions.','error');}
@@ -1511,20 +1528,20 @@ async function bulkApprove(){
 
 async function approveComm(id){
   try{
-    await rpc('admin_approve_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id});
+    await rpc('admin_approve_commission',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_id:id});
     alert$('admin-alert','Commission approved! +10 Mike Coins awarded.','success');
     loadAdmin();
   }catch(e){alert$('admin-alert','Error approving.','error');}
 }
-async function rejectComm(id){try{await rpc('admin_reject_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id});alert$('admin-alert','Commission rejected.','error');loadPending();}catch(e){alert$('admin-alert','Error rejecting.','error');}}
-async function deleteComm(id,source){if(!confirm('Delete this commission permanently?'))return;try{await rpc('admin_delete_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id});alert$('admin-alert','Deleted.','success');if(source==='pending')loadAdmin();else loadAll();}catch(e){alert$('admin-alert','Error deleting.','error');}}
+async function rejectComm(id){try{await rpc('admin_reject_commission',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_id:id});alert$('admin-alert','Commission rejected.','error');loadPending();}catch(e){alert$('admin-alert','Error rejecting.','error');}}
+async function deleteComm(id,source){if(!confirm('Delete this commission permanently?'))return;try{await rpc('admin_delete_commission',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_id:id});alert$('admin-alert','Deleted.','success');if(source==='pending')loadAdmin();else loadAll();}catch(e){alert$('admin-alert','Error deleting.','error');}}
 
 function openEdit(id,amount,note){document.getElementById('edit-id').value=id;document.getElementById('edit-amount').value=amount;document.getElementById('edit-note').value=note;document.getElementById('edit-modal').classList.add('open');}
 function closeEdit(){document.getElementById('edit-modal').classList.remove('open');}
 async function saveEdit(){
   const id=document.getElementById('edit-id').value,amount=parseFloat(document.getElementById('edit-amount').value),note=document.getElementById('edit-note').value.trim();
   if(isNaN(amount)||amount<=0){alert('Enter a valid amount.');return;}
-  try{await rpc('admin_edit_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id,p_amount:amount,p_note:note});closeEdit();alert$('admin-alert','Commission updated!','success');loadPending();loadAll();}
+  try{await rpc('admin_edit_commission',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_id:id,p_amount:amount,p_note:note});closeEdit();alert$('admin-alert','Commission updated!','success');loadPending();loadAll();}
   catch(e){alert$('admin-alert','Error saving.','error');}
 }
 
@@ -1554,7 +1571,7 @@ async function adminAddComm(){
   }
   document.getElementById('ac-spin').style.display='inline';
   try{
-    await rpc('admin_add_commission',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_agent_id:agentId,p_amount:amount,p_note:note,p_occurred_at:occurredAt});
+    await rpc('admin_add_commission',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_agent_id:agentId,p_amount:amount,p_note:note,p_occurred_at:occurredAt});
     document.getElementById('ac-amount').value='';document.getElementById('ac-note').value='';document.getElementById('ac-date').value='';sel.value='';
     const whenTxt=dateStr?` (dated ${dateStr})`:'';
     alert$('admin-comm-alert',agentName+' — '+fmt(amount)+' added'+whenTxt+'! +10 Mike Coins awarded.','success');loadAdmin();
@@ -1563,9 +1580,22 @@ async function adminAddComm(){
 }
 
 async function loadAgents(){
-  const agents=await rpc('get_agents_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}),el=document.getElementById('agents-list');
+  const agents=await rpc('get_agents_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token}),el=document.getElementById('agents-list');
   if(!agents.length){el.innerHTML='<div class="empty">No agents yet</div>';return;}
-  el.innerHTML=agents.map(a=>`<div class="entry-row flex-between"><div class="flex"><div class="avatar">${esc(initials(a.name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(a.name)}</div><div style="font-size:11px;color:var(--muted)">PIN: ${esc(a.pin)} · Added ${new Date(a.created_at).toLocaleDateString()}</div></div></div><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="removeAgent('${esc(a.id)}')">Remove</button></div>`).join('');
+  el.innerHTML=agents.map(a=>`<div class="entry-row flex-between"><div class="flex"><div class="avatar">${esc(initials(a.name))}</div><div><div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(a.name)}</div><div style="font-size:11px;color:var(--muted)">PIN: ${a.has_pin?'••••':'not set'} · Added ${new Date(a.created_at).toLocaleDateString()}</div></div></div><div class="flex" style="gap:6px"><button class="btn btn-ghost btn-sm" onclick="resetAgentPin('${esc(a.id)}','${esc(a.name)}')">Reset PIN</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="removeAgent('${esc(a.id)}')">Remove</button></div></div>`).join('');
+}
+
+// PINs are bcrypt-hashed and can no longer be read back, so admins reset rather
+// than look up. The master credentials sheet remains the source of truth.
+async function resetAgentPin(id,name){
+  const pin=prompt('New 4-digit PIN for '+name+':');
+  if(pin===null)return;
+  if(!/^\d{4}$/.test(pin.trim())){alert$('add-agent-alert','PIN must be exactly 4 digits.','error');return;}
+  try{
+    await rpc('admin_set_agent_pin',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_agent_id:id,p_pin:pin.trim()});
+    alert$('add-agent-alert',name+"'s PIN updated. Remember to update the credentials sheet.",'success');
+    loadAgents();
+  }catch(e){alert$('add-agent-alert',e.message||'Error resetting PIN.','error');}
 }
 
 async function addAgent(){
@@ -1574,12 +1604,12 @@ async function addAgent(){
   if(!name){alert$('add-agent-alert','Enter the agent name.','error');return;}
   if(!/^\d{4}$/.test(pin)){alert$('add-agent-alert','PIN must be exactly 4 digits.','error');return;}
   document.getElementById('na-spin').style.display='inline';
-  try{await rpc('admin_add_agent',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_name:name,p_pin:pin});document.getElementById('na-name').value='';document.getElementById('na-pin').value='';alert$('add-agent-alert',name+' added!','success');loadAgents();}
+  try{await rpc('admin_add_agent',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_name:name,p_pin:pin});document.getElementById('na-name').value='';document.getElementById('na-pin').value='';alert$('add-agent-alert',name+' added!','success');loadAgents();}
   catch(e){alert$('add-agent-alert',e.message||'Error.','error');}
   document.getElementById('na-spin').style.display='none';
 }
 
-async function removeAgent(id){if(!confirm('Remove this agent?'))return;try{await rpc('admin_remove_agent',{p_username:currentAdmin.username,p_password:currentAdmin.password,p_id:id});loadAgents();}catch(e){alert$('add-agent-alert','Error removing.','error');}}
+async function removeAgent(id){if(!confirm('Remove this agent?'))return;try{await rpc('admin_remove_agent',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_id:id});loadAgents();}catch(e){alert$('add-agent-alert','Error removing.','error');}}
 
 let allCommsCache=[];
 
@@ -1590,7 +1620,7 @@ function renderAllEntries(comms){
 }
 
 async function loadAll(){
-  allCommsCache=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password});
+  allCommsCache=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token});
   const search=document.getElementById('all-search');
   if(search)search.value='';
   if(!allCommsCache.length){document.getElementById('all-list').innerHTML='<div class="empty">No entries yet</div>';return;}
@@ -1616,9 +1646,9 @@ function csvRow(arr){return arr.map(csvEscape).join(',');}
 async function exportAllToCSV(){
   try{
     const[comms,agents,bets]=await Promise.all([
-      rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}),
-      rpc('get_agents_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}),
-      rpc('get_all_bets_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password})
+      rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token}),
+      rpc('get_agents_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token}),
+      rpc('get_all_bets_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token})
     ]);
 
     const lines=[];
@@ -1691,7 +1721,7 @@ async function populateLoginDropdowns(){
 }
 
 loadBoard();startRefresh();restoreAgentSession();restoreAdminSession();populateLoginDropdowns();
-setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.password}).catch(()=>[]);const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
+setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token}).catch(()=>[]);const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
 
 // ── UPDATE-AVAILABLE CHECK ──
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
