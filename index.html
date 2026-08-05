@@ -704,6 +704,33 @@ async function rpc(fn,args){
   return data;
 }
 
+// PostgREST caps EVERY response at the project's "Max rows" (1000) and truncates with an
+// HTTP 206 — not an error — so a plain rpc() silently returns a short list once a table
+// outgrows the cap. It bit the scoreboard on 2026-08-05: the commission feed hit 1018 rows
+// and the board simply stopped counting the overflow. And because these functions have no
+// ORDER BY, Postgres hands back heap order — approving a commission is an UPDATE, which
+// rewrites the row to the end of the heap, so the rows that fell off the end were exactly
+// the freshly-approved ones. Hence "I approve deals and they never show up."
+// Page through with an explicit sort so the set is both complete and deterministic.
+const RPC_PAGE=1000, RPC_MAX_PAGES=25;
+async function rpcAll(fn,args,order){
+  const out=[];
+  for(let page=0;page<RPC_MAX_PAGES;page++){
+    let q=sb.rpc(fn,args);
+    for(const col of order.split(',')){
+      const[name,dir]=col.split('.');
+      q=q.order(name,{ascending:dir!=='desc'});
+    }
+    const from=page*RPC_PAGE;
+    const{data,error}=await q.range(from,from+RPC_PAGE-1);
+    if(error)throw error;
+    if(!data||!data.length)break;
+    out.push(...data);
+    if(data.length<RPC_PAGE)break;
+  }
+  return out;
+}
+
 // ── DATE HELPERS ──
 function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d;}
 function startOfWeek(){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());return d;}
@@ -876,7 +903,10 @@ function filterByPeriod(rows,period){
 }
 
 async function loadBoard(){
-  const[agents,feed]=await Promise.all([rpc('get_agents_board',{}),rpc('get_public_commission_feed',{})]);
+  const[agents,feed]=await Promise.all([
+    rpc('get_agents_board',{}),
+    rpcAll('get_public_commission_feed',{},'approved_at.asc,agent_id.asc,amount.asc')
+  ]);
   const periodComms=filterByPeriod(feed,currentPeriod);
   const totals={},counts={};agents.forEach(a=>{totals[a.name]=0;counts[a.name]=0;});
   periodComms.forEach(c=>{
@@ -1143,7 +1173,7 @@ async function suggestOdds(){
   if(!aId||!bId){alert$('sb-alert','Choose both agents first.','error');return;}
   // Use trailing approved commission (last 2-4 weeks) as a rough performance signal
   const fourWeeksAgo=new Date();fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
-  const feed=await rpc('get_public_commission_feed',{});
+  const feed=await rpcAll('get_public_commission_feed',{},'approved_at.asc,agent_id.asc,amount.asc');
   const recent=feed.filter(c=>c.approved_at&&new Date(c.approved_at)>=fourWeeksAgo);
   const totalA=recent.filter(c=>c.agent_id===aId).reduce((s,c)=>s+Number(c.amount),0);
   const totalB=recent.filter(c=>c.agent_id===bId).reduce((s,c)=>s+Number(c.amount),0);
@@ -1482,7 +1512,7 @@ function adminTab(tab){
 }
 
 async function loadAdmin(){
-  const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token});
+  const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc');
   const approved=comms.filter(c=>c.status==='approved');
   const todayStart=startOfToday(),weekStart=startOfWeek();
   const todayAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart).reduce((s,c)=>s+Number(c.amount),0);
@@ -1497,7 +1527,7 @@ async function loadAdmin(){
 let selectedPendingIds=new Set();
 
 async function loadPending(){
-  const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token});
+  const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc');
   const pending=comms.filter(c=>c.status==='pending');
   document.getElementById('pcnt').textContent=pending.length;
   document.getElementById('hdr-pcnt').textContent=pending.length;
@@ -1630,7 +1660,7 @@ function renderAllEntries(comms){
 }
 
 async function loadAll(){
-  allCommsCache=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token});
+  allCommsCache=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc');
   const search=document.getElementById('all-search');
   if(search)search.value='';
   if(!allCommsCache.length){document.getElementById('all-list').innerHTML='<div class="empty">No entries yet</div>';return;}
@@ -1656,7 +1686,7 @@ function csvRow(arr){return arr.map(csvEscape).join(',');}
 async function exportAllToCSV(){
   try{
     const[comms,agents,bets]=await Promise.all([
-      rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token}),
+      rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc'),
       rpc('get_agents_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token}),
       rpc('get_all_bets_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token})
     ]);
@@ -1731,7 +1761,7 @@ async function populateLoginDropdowns(){
 }
 
 loadBoard();startRefresh();restoreAgentSession();restoreAdminSession();populateLoginDropdowns();
-setInterval(async()=>{if(!adminAuthed)return;const comms=await rpc('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token}).catch(()=>[]);const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
+setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc').catch(()=>[]);const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
 
 // ── UPDATE-AVAILABLE CHECK ──
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
