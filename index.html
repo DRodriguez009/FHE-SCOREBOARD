@@ -208,6 +208,15 @@ select option{background:#020802}
 .modal-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:20px;text-transform:uppercase;letter-spacing:1px;color:var(--orange);margin-bottom:1.25rem}
 
 /* ── UPDATE OVERLAY (full screen, blocks interaction until refresh) ── */
+.month-group{border:1px solid #12301a;border-radius:var(--rl);overflow:hidden;margin-bottom:10px}
+.month-summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;background:#08150c;user-select:none}
+.month-summary::-webkit-details-marker{display:none}
+.month-summary:hover{background:#0b1d10}
+.month-summary::before{content:'▸';color:var(--orange);font-size:12px;margin-right:6px}
+.month-group[open]>.month-summary::before{content:'▾'}
+.month-name{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#fff}
+.month-meta{font-size:11px;color:var(--muted)}
+.month-group .entry-row{border-radius:0;border-left:0;border-right:0;margin-bottom:0}
 #update-overlay{display:none;position:fixed;inset:0;background:rgba(2,8,2,.93);z-index:9000;align-items:center;justify-content:center;padding:1.5rem;backdrop-filter:blur(3px)}
 #update-overlay.open{display:flex}
 .update-overlay-card{background:var(--dark);border:2px solid var(--orange);border-radius:var(--rl);padding:2.5rem 2rem;max-width:420px;width:100%;text-align:center;box-shadow:0 0 60px rgba(244,115,33,.25)}
@@ -1540,7 +1549,7 @@ function adminTab(tab){
 }
 
 async function loadAdmin(){
-  const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc');
+  const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'created_at.desc,id.asc');
   const approved=comms.filter(c=>c.status==='approved');
   const todayStart=startOfToday(),weekStart=startOfWeek();
   const todayAmt=approved.filter(c=>c.approved_at&&new Date(c.approved_at)>=todayStart).reduce((s,c)=>s+Number(c.amount),0);
@@ -1555,7 +1564,7 @@ async function loadAdmin(){
 let selectedPendingIds=new Set();
 
 async function loadPending(){
-  const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc');
+  const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'created_at.desc,id.asc');
   const pending=comms.filter(c=>c.status==='pending');
   document.getElementById('pcnt').textContent=pending.length;
   document.getElementById('hdr-pcnt').textContent=pending.length;
@@ -1681,14 +1690,41 @@ async function removeAgent(id){if(!confirm('Remove this agent?'))return;try{awai
 
 let allCommsCache=[];
 
-function renderAllEntries(comms){
+// An entry belongs to the month it COUNTS for, not the month it was typed in. A
+// back-dated deal (admin_add_commission with p_occurred_at) is created today but
+// approved into an earlier month, and filing it under today would misplace it.
+function entryEffectiveDate(c){return new Date(c.approved_at||c.created_at);}
+function entryMonthKey(c){const d=entryEffectiveDate(c);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+function entryMonthLabel(k){const[y,m]=k.split('-');return new Date(Number(y),Number(m)-1,1).toLocaleDateString(undefined,{month:'long',year:'numeric'});}
+
+function entryRowHtml(c){return`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><div class="flex"><div class="avatar" style="width:28px;height:28px;font-size:10px">${esc(initials(c.agent_name))}</div><span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</span></div><div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span><button class="btn btn-ghost btn-sm" onclick="openEdit('${esc(c.id)}','${esc(c.amount)}','${esc(c.note||'')}')" style="padding:3px 8px;font-size:11px">✏️</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070;padding:3px 8px;font-size:11px" onclick="deleteComm('${esc(c.id)}','all')">🗑</button></div></div>${c.note?`<div style="font-size:12px;color:var(--muted);padding-left:36px;margin-bottom:2px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted);padding-left:36px">${new Date(c.created_at).toLocaleString()}</div></div>`;
+}
+
+function renderAllEntries(comms,expandAll){
   const el=document.getElementById('all-list');
   if(!comms.length){el.innerHTML='<div class="empty">No matching entries</div>';return;}
-  el.innerHTML=comms.map(c=>`<div class="entry-row"><div class="flex-between" style="margin-bottom:4px"><div class="flex"><div class="avatar" style="width:28px;height:28px;font-size:10px">${esc(initials(c.agent_name))}</div><span style="font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;text-transform:uppercase">${esc(c.agent_name)}</span></div><div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">${fmt(c.amount)}</span><span class="badge badge-${c.status}">${c.status}</span><button class="btn btn-ghost btn-sm" onclick="openEdit('${esc(c.id)}','${esc(c.amount)}','${esc(c.note||'')}')" style="padding:3px 8px;font-size:11px">✏️</button><button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070;padding:3px 8px;font-size:11px" onclick="deleteComm('${esc(c.id)}','all')">🗑</button></div></div>${c.note?`<div style="font-size:12px;color:var(--muted);padding-left:36px;margin-bottom:2px">${esc(c.note)}</div>`:''}<div style="font-size:11px;color:var(--muted);padding-left:36px">${new Date(c.created_at).toLocaleString()}</div></div>`).join('');
+  const sorted=[...comms].sort((a,b)=>entryEffectiveDate(b)-entryEffectiveDate(a));
+  const groups=new Map();
+  sorted.forEach(c=>{const k=entryMonthKey(c);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(c);});
+  let idx=0;
+  el.innerHTML=[...groups.entries()].map(([key,rows])=>{
+    const approvedTotal=rows.filter(r=>r.status==='approved').reduce((s,r)=>s+Number(r.amount),0);
+    const pending=rows.filter(r=>r.status==='pending').length;
+    // Newest month open by default; older months collapsed so the list stays scannable
+    // as history grows. While searching, open everything so no match hides in a fold.
+    const open=(expandAll||idx++===0)?' open':'';
+    return`<details class="month-group"${open}>
+      <summary class="month-summary">
+        <span class="month-name">${esc(entryMonthLabel(key))}</span>
+        <span class="month-meta">${rows.length} ${rows.length===1?'entry':'entries'} · ${fmt(approvedTotal)} approved${pending?` · <span style="color:var(--orange)">${pending} pending</span>`:''}</span>
+      </summary>
+      ${rows.map(entryRowHtml).join('')}
+    </details>`;
+  }).join('');
 }
 
 async function loadAll(){
-  allCommsCache=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc');
+  allCommsCache=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'created_at.desc,id.asc');
   const search=document.getElementById('all-search');
   if(search)search.value='';
   if(!allCommsCache.length){document.getElementById('all-list').innerHTML='<div class="empty">No entries yet</div>';return;}
@@ -1699,7 +1735,7 @@ function filterAllEntries(){
   const q=document.getElementById('all-search').value.trim().toLowerCase();
   if(!q){renderAllEntries(allCommsCache);return;}
   const filtered=allCommsCache.filter(c=>c.agent_name.toLowerCase().includes(q));
-  renderAllEntries(filtered);
+  renderAllEntries(filtered,true);
 }
 
 // ── CSV EXPORT (commissions + agent sale summary + bet history, one file) ──
@@ -1714,7 +1750,7 @@ function csvRow(arr){return arr.map(csvEscape).join(',');}
 async function exportAllToCSV(){
   try{
     const[comms,agents,bets]=await Promise.all([
-      rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc'),
+      rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'created_at.desc,id.asc'),
       rpc('get_agents_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token}),
       rpc('get_all_bets_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token})
     ]);
@@ -1789,13 +1825,13 @@ async function populateLoginDropdowns(){
 }
 
 loadBoard();startRefresh();restoreAgentSession();restoreAdminSession();populateLoginDropdowns();
-setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'id.asc').catch(()=>[]);const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
+setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'created_at.desc,id.asc').catch(()=>[]);const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
 
 // ── UPDATE-AVAILABLE CHECK ──
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-08-05-server-side-aggregation-002';
+const APP_VERSION='2026-08-05-all-entries-by-month-003';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
