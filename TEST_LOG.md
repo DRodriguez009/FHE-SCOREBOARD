@@ -1,5 +1,51 @@
 # TEST_LOG.md
 
+## Fix + Verify — 2026-08-05 (approved deals not reaching the scoreboard)
+
+### Feature Under Test: Commission feed completeness / 1000-row API cap
+### Result: PASS
+
+**Root cause:** not the approval path. Supabase's PostgREST caps every response at the
+project's `Max rows` (1000) and truncates with an HTTP **206, not an error** — so
+supabase-js set no `error` and the client aggregated a short list in silence.
+`get_public_commission_feed` had crossed the cap (1018 rows), and because the function has
+no `ORDER BY`, Postgres returned heap order. Approving a commission is an `UPDATE`, which
+rewrites the row to the end of the heap — so the rows past the cut were exactly the
+freshly-approved ones. Today's board showed **1** sale against **21** actually approved.
+
+Same cap hit `get_all_commissions_admin` (all statuses, so also >1000). The Pending tab
+filters that list client-side, so pending deals could vanish from the approval queue
+outright — deals that could not be approved at all, not merely mis-displayed.
+
+**Fix:** `rpcAll()` in index.html pages through with an explicit deterministic sort
+(`approved_at,agent_id,amount` for the feed; `id` for admin). Client-only — no DB change
+and no dashboard change, so it did not wait on the blocked Supabase MCP grant.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| Cap confirmed | PASS | `content-range: 0-999/1018` — function emits 1018, API returns 1000 |
+| Newest-rows-dropped theory | PASS | server-side filter `approved_at=gte.2026-08-05` → 21 rows; unfiltered feed → 1 |
+| Pagination completeness | PASS | 2 pages → 1020/1020 rows, ordering verified ascending |
+| rpcAll via supabase-js | PASS | verbatim function vs live project: 1000 → 1020 rows |
+| Today's board | PASS | 1 sale/$170 → 21 sales/$2,470 |
+| All-time total | PASS | $149,145 → $151,445 |
+| Admin `id.asc` order valid | PASS | bogus-token probe returns P0001 auth raise, not 42703 — column exists |
+| JS syntax | PASS | `node --check` on extracted inline script |
+| Deploy | PASS | main `0c214a4` → Vercel prod Ready; fhe-scoreboard.vercel.app serves rpcAll |
+
+### Blockers / Follow-ups:
+- [ ] Browser smoke test not run — Playwright MCP was locked by another session. Verified
+      the exact code path headlessly through supabase-js instead; no visual confirmation.
+- [ ] Durable fix: aggregate server-side so the board pulls ~18 rows instead of 1020 every
+      30s. Needs DB access (blocked on the Supabase MCP grant).
+- [ ] `get_public_commission_feed` still has no `ORDER BY` server-side; ordering is imposed
+      by the client. Add `order by approved_at desc` in the function when access is back.
+- [ ] Sibling apps share the 1000-row default — goal-leaderboard and command-center are
+      unaudited.
+- [ ] Bet history shows a bare `Side: A/B` letter and the free-text `line_title` rather than
+      `agent_a_name vs agent_b_name`; on admin-created lines those can disagree. Source of
+      the disputed Javier/Nelson bet. Needs `get_my_bets` to return the agent names.
+
 ## Fix + Verify — 2026-07-31 (sportsbook payouts not landing)
 
 ### Feature Under Test: Daily sportsbook auto-settlement + backfill of unpaid bets
