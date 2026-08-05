@@ -1767,7 +1767,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_c
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-07-31-mike-coins-standings-001';
+const APP_VERSION='2026-08-05-row-cap-pagination-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
@@ -1778,6 +1778,14 @@ async function checkForUpdate(){
     if(match&&match[1]&&match[1]!==APP_VERSION){
       updateOverlayShown=true;
       document.getElementById('update-overlay').classList.add('open');
+      // A wall-mounted TV has nobody to click "Refresh Now", so the board would sit behind
+      // this overlay until someone walked over — worse than the stale code it warns about.
+      // On the scoreboard view there is no form state to lose, so reload automatically.
+      // Agent/admin views keep the manual button: an auto-reload there could wipe a
+      // half-typed commission.
+      if(document.getElementById('tn-scoreboard').classList.contains('active')){
+        setTimeout(()=>location.reload(),8000);
+      }
     }
   }catch(e){/* network hiccup, ignore */}
 }
