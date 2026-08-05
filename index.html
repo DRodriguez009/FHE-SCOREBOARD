@@ -879,22 +879,38 @@ loadAnnouncement();
 setInterval(loadAnnouncement,30000);
 
 // ── STREAK / PERSONAL BEST ── (input rows are already approved-only: {agent_id,amount,approved_at})
+// Days are the OFFICE's days — Eastern — not UTC. These used to take the UTC date off the
+// ISO string (approved_at.slice(0,10)), so every sale approved after 8pm ET (7pm in
+// winter) was counted on the FOLLOWING day. That is what made Albert Gonzalez's best day
+// read $2,490 on Jun 30 when $760 of it was actually approved at 8:20pm on Jun 29; his
+// real best day is Jul 31 at $1,815. The same boundary could credit a streak day nobody
+// sold on, or punch a hole in one they did.
+const ET_DAY_FMT=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
+function etDayKey(ts){return ET_DAY_FMT.format(new Date(ts));} // -> 'YYYY-MM-DD' in ET
+// Step/round dates on a UTC-anchored calendar so a DST change can't skip or repeat a day.
+function shiftDayKey(key,days){const[y,m,d]=key.split('-').map(Number);const dt=new Date(Date.UTC(y,m-1,d));dt.setUTCDate(dt.getUTCDate()+days);return dt.toISOString().slice(0,10);}
+function weekStartKey(key){const[y,m,d]=key.split('-').map(Number);const dt=new Date(Date.UTC(y,m-1,d));dt.setUTCDate(dt.getUTCDate()-dt.getUTCDay());return dt.toISOString().slice(0,10);}
+
 function calcStreak(comms,agentId){
   const approved=comms.filter(c=>c.agent_id===agentId&&c.approved_at);
   if(!approved.length)return 0;
-  const days=new Set(approved.map(c=>c.approved_at.slice(0,10)));
-  let streak=0;const today=new Date();
-  for(let i=0;i<365;i++){const d=new Date(today);d.setDate(d.getDate()-i);if(days.has(d.toISOString().slice(0,10)))streak++;else if(i>0)break;}
+  const days=new Set(approved.map(c=>etDayKey(c.approved_at)));
+  const today=etDayKey(new Date());
+  let streak=0;
+  // i>0 on the miss: "no sale yet today" must not reset the streak mid-morning.
+  for(let i=0;i<365;i++){if(days.has(shiftDayKey(today,-i)))streak++;else if(i>0)break;}
   return streak;
 }
 function calcPersonalBest(comms,agentId){
   const approved=comms.filter(c=>c.agent_id===agentId&&c.approved_at);
   if(!approved.length)return{bestDay:0,bestWeek:0};
-  const byDay={};approved.forEach(c=>{const d=c.approved_at.slice(0,10);byDay[d]=(byDay[d]||0)+Number(c.amount);});
-  const bestDay=Math.max(...Object.values(byDay));
-  const byWeek={};approved.forEach(c=>{const d=new Date(c.approved_at);d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());const wk=d.toISOString().slice(0,10);byWeek[wk]=(byWeek[wk]||0)+Number(c.amount);});
-  const bestWeek=Math.max(...Object.values(byWeek));
-  return{bestDay,bestWeek};
+  const byDay={},byWeek={};
+  approved.forEach(c=>{
+    const day=etDayKey(c.approved_at),wk=weekStartKey(day);
+    byDay[day]=(byDay[day]||0)+Number(c.amount);
+    byWeek[wk]=(byWeek[wk]||0)+Number(c.amount);
+  });
+  return{bestDay:Math.max(...Object.values(byDay)),bestWeek:Math.max(...Object.values(byWeek))};
 }
 
 // ── SCOREBOARD ──
@@ -1831,7 +1847,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_c
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-08-05-all-entries-by-month-003';
+const APP_VERSION='2026-08-05-eastern-time-days-004';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;

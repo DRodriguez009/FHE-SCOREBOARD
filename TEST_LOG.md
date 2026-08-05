@@ -1,5 +1,48 @@
 # TEST_LOG.md
 
+## Fix + Verify — 2026-08-05 (day bucketing was UTC, not Eastern)
+
+### Result: PASS
+
+Surfaced by a question about a number on screen: Albert Gonzalez's best day read **$2,490**
+on Jun 30. $760 of that was approved at **8:20 PM ET on Jun 29** — 00:20 UTC on Jun 30 —
+so UTC bucketing folded it into the next day.
+
+`calcStreak` and `calcPersonalBest` took the date via `approved_at.slice(0,10)`, which is
+the UTC date, and `get_agent_streaks()` used `at time zone 'UTC'`. Everything else on the
+board (Today/Week/Month filters) already used the viewer's local time, i.e. Eastern — so
+the two disagreed for anything approved after 8 PM ET (7 PM in winter). This office sells
+into the evening, so that is not an edge case.
+
+All three now bucket in `America/New_York`. Client date maths steps on a UTC-anchored
+calendar (`shiftDayKey` / `weekStartKey`) so a DST change cannot skip or repeat a day.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| Streaks unchanged today | PASS | all 15 identical before/after — no current run crosses a boundary |
+| Personal bests recomputed | PASS | 10 of 17 agents were inflated; see below |
+| Phantom record day removed | PASS | 8 agents "peaked" on 2026-06-30 UTC, which was the Jun 29 evening backfill |
+| Albert Gonzalez | PASS | $2,490 Jun 30 → **$1,815 Jul 31** (the actual best day) |
+| Unaffected agents stay put | PASS | 7 agents identical — bests already sat mid-day |
+| JS syntax | PASS | `node --check` on the extracted script |
+
+Agents whose best day changed: Aaron Matthews ($1,780→$1,265), Abraham Canales
+($1,405→$845), Aidan Mueller ($1,725→$1,230), Albert Gonzalez ($2,490→$1,815), Arturo
+Perez ($745→$690), Daniel Ramirez ($1,130→$690), Marlon Ramirez ($1,255→$875), Nelson
+Santos ($740→$545), Nicolas Fuentes ($1,085→$685), Robert Medio ($1,415→$915).
+
+Note the numbers go DOWN because the old ones were double-counted days, not because
+anything was taken away. Worth saying out loud to the floor if anyone notices their record
+dropped.
+
+### Blockers / Follow-ups:
+- [ ] The Jun 29 evening backfill is still a single lump — every historical sale was
+      approved in one sitting, so Jun 29 ET remains an artificially large day for a few
+      agents (Aaron, Daniel, Robert now peak there). That is a data-history artifact, not
+      a timezone bug; those approvals genuinely happened that evening.
+- [ ] Timezone is hardcoded to America/New_York in three places. Fine while there is one
+      office; would need config if that ever changes.
+
 ## Build — 2026-08-05 (canary + coin audit trail)
 
 ### Result: PASS
