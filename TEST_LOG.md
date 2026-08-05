@@ -78,12 +78,36 @@ as `6c8c060` in that repo. Found safe: goal-tracker reads the `gt_agent_overall`
 (48 rows), and `carrier_list` / `carrier_category_summary` aggregate in SQL rather than
 returning `carrier_states` (756) or `carrier_appointments` (648) row by row.
 
+### Ledger correction — Javier Hernandez, bet 3b89ba66 (2026-08-05, by Derrick's call)
+
+Derrick declined a refund and instead ruled the bet had been recorded on the wrong side.
+Switched it to Gabriel Tamayo, which is the side that won, so it settles as a win.
+
+| Field | Before | After |
+|-------|--------|-------|
+| side | `b` (Nelson Santos) | `a` (Gabriel Tamayo) |
+| status | lost | won |
+| payout | 0 | 1495 (712 × 2.1, same rounding as auto_settle) |
+| Javier's coins | 742 | 2247 |
+
+Applied in a single `DO` block that re-reads the row `for update` and aborts unless it is
+still `side=b / status=lost / amount=712`, so a re-run cannot double-credit. Wallet moved
+via `credit_wallet()` — the same path auto-settlement uses — rather than a raw coins update.
+
+Balance is 2247, not the predicted 2237: a $165 sale of his was approved at 20:12 UTC
+mid-operation, which awards +10 Mike Coins. Independently confirms the approval → coins
+path is live after the row-cap fix.
+
+Note for the record: the evidence still says the bet was *recorded* as placed — the line was
+auto-generated (title order matches agent_a/agent_b) and the confirm modal spells the side
+out in words. This was an operator judgement call in the agent's favour, not a proven
+system error. The genuine defect was that bet history displayed a bare `Side: B`, which is
+what made the claim impossible to disprove; that is now fixed.
+
 ### Blockers / Follow-ups:
 - [ ] Browser smoke test still not run — Playwright MCP was locked by another session for
       the whole run. Every check above is API-level or headless; no human or browser has
       actually looked at the rendered board or the new bet-history rows.
-- [ ] The disputed Javier bet is unchanged on the ledger. The UI can no longer produce that
-      ambiguity, but whether to refund the 712 coins is still an open call.
 - [ ] `get_public_commission_feed` now has no client callers at all. Left in place as a
       public RPC; consider retiring it.
 - [ ] Supabase MCP is still unauthenticated. Not blocking — the CLI covers it — but MCP
