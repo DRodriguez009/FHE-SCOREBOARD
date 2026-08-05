@@ -1,5 +1,57 @@
 # TEST_LOG.md
 
+## Build — 2026-08-05 (canary + coin audit trail)
+
+### Result: PASS
+
+Two things built off the day's post-mortem: a watchdog for the failure mode that started
+it, and an audit trail for the manual ledger edit it ended with.
+
+**1. Silent-truncation canary** — `scripts/canary.mjs`, scheduled by
+`.github/workflows/canary.yml` (09:00 ET weekdays, plus on-demand and on relevant pushes).
+For every anon-reachable RPC it asks PostgREST how many rows actually matched
+(`Prefer: count=exact`) and compares that to how many came back. Divergence = data being
+dropped silently, which is precisely what nobody noticed for days. Reads the Supabase URL
+and anon key out of index.html so there is one source of truth. Alerts Slack if
+`SLACK_WEBHOOK_URL` is set; otherwise the job just fails and GitHub emails.
+
+**2. `get_public_commission_feed` bounded** — the canary's first real run failed on it:
+1000 returned / 1030 matched. It has no callers left, so nothing was visibly broken, but
+it was a live trap for whoever wrote the next one. Now `limit 1000` explicitly, so the
+contract is an honest "most recent 1000" instead of "all of them, except silently not".
+
+**3. `coin_ledger` + trigger** — every Mike Coins movement is now recorded. Implemented as
+a trigger on the balance column rather than logging inside `credit_wallet()`, because
+coins move by two routes: betting/settlement/house-credit go through the helper, but
+`admin_approve_commission` / `admin_bulk_approve_commissions` / `admin_add_commission`
+write `set coins = coins + 10` directly. Helper-only logging would have missed every
+commission award. A trigger catches all routes including raw operator SQL.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| Canary detects real truncation | PASS | first run caught feed 1000/1030 and exited 1 |
+| Canary passes when healthy | PASS | 8 endpoints + 2 invariants green, exit 0 |
+| Canary negative test | PASS | injected a nonexistent RPC → failure reported, exit 1 |
+| No false positive on bounded feed | PASS | `bounded` flag suppresses the growth warning |
+| Invariant is a real cross-check | PASS | board per-agent sums vs `get_commission_stats`, counted by a different query path (no join/group) — 1030 rows / $152,800 both match |
+| Coin trigger fires | PASS | self-test in an aborting txn: delta=7, balance_after captured, reason+actor captured |
+| Self-test left no residue | PASS | RAISE rolled it back — ledger back to 1 row, agent coins back to 410 |
+| Ledger not anon-readable | PASS | table read → 42501; `admin_coin_ledger` → P0001 without admin creds |
+| Javier correction backfilled | PASS | 1495 delta, balance_after 2247, actor `derrick`, stamped at the real time |
+
+### Blockers / Follow-ups:
+- [ ] `SLACK_WEBHOOK_URL` is not set as a repo secret, so the canary currently alerts only
+      via GitHub's failure email. Needs adding in repo Settings → Secrets.
+- [ ] The canary covers the scoreboard's public surface only. Authenticated endpoints
+      (`get_all_commissions_admin`, the command-center NIPR route) are unchecked because
+      they need credentials.
+- [ ] `reason`/`actor` on coin_ledger are populated only when a caller sets the
+      `app.coin_reason` / `app.coin_actor` GUCs. Existing functions don't, so routine
+      movements log with a null reason — delta + timestamp still reconcile against
+      commissions and bets. Worth setting in the approval and settlement paths later.
+- [ ] No UI for the ledger. `admin_coin_ledger(username, password, wallet_id, limit)`
+      exists and is admin-gated; nothing renders it yet.
+
 ## Fix + Verify — 2026-08-05 (approved deals not reaching the scoreboard)
 
 ### Feature Under Test: Commission feed completeness / 1000-row API cap
