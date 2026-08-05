@@ -53,18 +53,41 @@ was too broad: only the MCP path was blocked. Check the CLI first next time.
 
 Recorded at supabase/migrations/20260805190000_fix_odds_for_pair_search_path.sql.
 
+### Durable fixes — same day, once CLI access was found
+
+All four follow-ups below were closed in one pass. Migration:
+supabase/migrations/20260805200000_server_side_board_aggregation.sql
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| Board aggregates in Postgres | PASS | new `get_scoreboard_totals(p_since)` + `get_agent_streaks()`; loadBoard fetches ~18 rows, not ~1024 |
+| **Aggregates match old client math** | PASS | all / today / week / month totals AND sale counts equal per agent — compared against the fully-paginated feed |
+| **Streaks match old calcStreak** | PASS | all 17 agents equal; gaps-and-islands in SQL reproduces the UTC-date, ends-yesterday-still-counts semantics |
+| Payload per refresh | PASS | 146,953 B (truncated) → 2,934 B — 50× smaller, and no longer truncatable |
+| Feed ordering | PASS | `order by approved_at desc` added; newest-first confirmed live |
+| get_my_bets signature | PASS | bad-credential probe returns P0001, so the client call shape still resolves after DROP + CREATE |
+| Bet history labels | PASS | renders "Picked: Nelson Santos", and derives the matchup from agent columns not the free-text title |
+| Board render (deployed logic) | PASS | today = 11 agents / $2,740 / 23 sales, streaks present |
+| APP_VERSION bumped | PASS | `2026-08-05-server-side-aggregation-002` live |
+
+**Sibling audit (the shared project `eawpwwctsifzcclrwvww`):** only one real exposure.
+`fhe-command-center` `/api/nipr/licenses` did an unbounded select on `nipr_licenses`
+(859 rows) then joined in JS — ~141 rows from silently dropping licences out of a
+compliance view. Fixed by paging, ordered by `id`; tsc + production build clean; shipped
+as `6c8c060` in that repo. Found safe: goal-tracker reads the `gt_agent_overall` view
+(48 rows), and `carrier_list` / `carrier_category_summary` aggregate in SQL rather than
+returning `carrier_states` (756) or `carrier_appointments` (648) row by row.
+
 ### Blockers / Follow-ups:
-- [ ] Browser smoke test not run — Playwright MCP was locked by another session. Verified
-      the exact code path headlessly through supabase-js instead; no visual confirmation.
-- [ ] Durable fix: aggregate server-side so the board pulls ~18 rows instead of 1020 every
-      30s. Needs DB access (blocked on the Supabase MCP grant).
-- [ ] `get_public_commission_feed` still has no `ORDER BY` server-side; ordering is imposed
-      by the client. Add `order by approved_at desc` in the function when access is back.
-- [ ] Sibling apps share the 1000-row default — goal-leaderboard and command-center are
-      unaudited.
-- [ ] Bet history shows a bare `Side: A/B` letter and the free-text `line_title` rather than
-      `agent_a_name vs agent_b_name`; on admin-created lines those can disagree. Source of
-      the disputed Javier/Nelson bet. Needs `get_my_bets` to return the agent names.
+- [ ] Browser smoke test still not run — Playwright MCP was locked by another session for
+      the whole run. Every check above is API-level or headless; no human or browser has
+      actually looked at the rendered board or the new bet-history rows.
+- [ ] The disputed Javier bet is unchanged on the ledger. The UI can no longer produce that
+      ambiguity, but whether to refund the 712 coins is still an open call.
+- [ ] `get_public_commission_feed` now has no client callers at all. Left in place as a
+      public RPC; consider retiring it.
+- [ ] Supabase MCP is still unauthenticated. Not blocking — the CLI covers it — but MCP
+      tooling stays unavailable until `/mcp` is re-run against the FHE org.
 
 ## Fix + Verify — 2026-07-31 (sportsbook payouts not landing)
 
