@@ -896,24 +896,28 @@ function setPeriod(p){
   loadBoard();
 }
 
-function filterByPeriod(rows,period){
-  if(period==='all')return rows;
-  const since=period==='today'?startOfToday():period==='month'?startOfMonth():startOfWeek();
-  return rows.filter(c=>c.approved_at&&new Date(c.approved_at)>=since);
+function periodSince(period){
+  if(period==='all')return null;
+  const d=period==='today'?startOfToday():period==='month'?startOfMonth():startOfWeek();
+  return d.toISOString();
 }
 
 async function loadBoard(){
-  const[agents,feed]=await Promise.all([
+  // The board used to pull EVERY approved commission and add it up in the browser, which
+  // is how the 1000-row response cap silently broke it. Totals and streaks are now
+  // computed in Postgres, so this fetches ~18 rows per refresh instead of ~1000 and
+  // cannot be truncated.
+  const[agents,totalRows,streakRows]=await Promise.all([
     rpc('get_agents_board',{}),
-    rpcAll('get_public_commission_feed',{},'approved_at.asc,agent_id.asc,amount.asc')
+    rpc('get_scoreboard_totals',{p_since:periodSince(currentPeriod)}),
+    rpc('get_agent_streaks',{})
   ]);
-  const periodComms=filterByPeriod(feed,currentPeriod);
   const totals={},counts={};agents.forEach(a=>{totals[a.name]=0;counts[a.name]=0;});
-  periodComms.forEach(c=>{
-    if(totals[c.agent_name]===undefined){totals[c.agent_name]=0;counts[c.agent_name]=0;}
-    totals[c.agent_name]+=Number(c.amount);
-    counts[c.agent_name]+=1;
+  totalRows.forEach(r=>{
+    totals[r.agent_name]=(totals[r.agent_name]||0)+Number(r.total);
+    counts[r.agent_name]=(counts[r.agent_name]||0)+Number(r.sale_count);
   });
+  const streakById={};streakRows.forEach(s=>{streakById[s.agent_id]=Number(s.streak)||0;});
   const withComm=Object.entries(totals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
   const without=Object.entries(totals).filter(([,v])=>v===0).sort((a,b)=>a[0].localeCompare(b[0]));
   const ranked=[...withComm,...without];
@@ -940,7 +944,7 @@ async function loadBoard(){
     let moveHtml='';
     if(prevRankings[name]!==undefined&&amt>0){const diff=prevRankings[name]-i;if(diff>0)moveHtml=`<span class="move-up">▲${diff}</span>`;else if(diff<0)moveHtml=`<span class="move-down">▼${Math.abs(diff)}</span>`;}
     const agentId=agentMap[name];
-    const streak=agentId?calcStreak(feed,agentId):0;
+    const streak=agentId?(streakById[agentId]||0):0;
     const streakHtml=streak>=2?`<span class="tv-streak">🔥${streak}d</span>`:'';
     const saleCount=counts[name]||0;
     const saleLabel=saleCount===1?'sale':'sales';
@@ -1173,10 +1177,9 @@ async function suggestOdds(){
   if(!aId||!bId){alert$('sb-alert','Choose both agents first.','error');return;}
   // Use trailing approved commission (last 2-4 weeks) as a rough performance signal
   const fourWeeksAgo=new Date();fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
-  const feed=await rpcAll('get_public_commission_feed',{},'approved_at.asc,agent_id.asc,amount.asc');
-  const recent=feed.filter(c=>c.approved_at&&new Date(c.approved_at)>=fourWeeksAgo);
-  const totalA=recent.filter(c=>c.agent_id===aId).reduce((s,c)=>s+Number(c.amount),0);
-  const totalB=recent.filter(c=>c.agent_id===bId).reduce((s,c)=>s+Number(c.amount),0);
+  const rows=await rpc('get_scoreboard_totals',{p_since:fourWeeksAgo.toISOString()});
+  const totalA=Number((rows.find(r=>r.agent_id===aId)||{}).total||0);
+  const totalB=Number((rows.find(r=>r.agent_id===bId)||{}).total||0);
   const sum=totalA+totalB;
   if(sum===0){
     document.getElementById('sbl-odds-a').value='2.0';
@@ -1348,6 +1351,30 @@ async function confirmBet(){
   }
 }
 
+// Bet history used to print a bare "Side: A"/"Side: B" and leave the bettor to work out
+// who that was from the name order in the line's title. That inference holds for
+// auto-generated matchups but NOT for admin-created lines, where the title is typed by
+// hand and is independent of the agent A/B dropdowns — so it can read exactly backwards.
+// It cost a disputed 712-coin bet on 2026-08-04 that nobody could settle from the screen.
+// Name the side, and build the matchup label from the agent columns, never the title.
+function betSideLabel(b){
+  const s=(b.side||'').toLowerCase();
+  if(b.line_type==='head_to_head'){
+    if(s==='a')return b.agent_a_name||'Side A';
+    if(s==='b')return b.agent_b_name||'Side B';
+  }
+  if(b.line_type==='over_under'&&(s==='over'||s==='under'))
+    return `${s==='over'?'Over':'Under'} ${b.threshold!=null?fmt(b.threshold):''}`.trim();
+  if(s==='yes')return'Yes';
+  if(s==='no')return'No';
+  return s.toUpperCase();
+}
+function betLineLabel(b){
+  if(b.line_type==='head_to_head'&&b.agent_a_name&&b.agent_b_name)
+    return`${b.agent_a_name} vs ${b.agent_b_name}`;
+  return b.line_title||'Bet';
+}
+
 async function loadMyBets(){
   if(!sbCurrentBettor)return;
   const bets=await rpc('get_my_bets',{p_bettor_type:sbCurrentBettor.type,p_bettor_id:String(sbCurrentBettor.id),p_pin:sbCurrentBettor.token,p_admin_password:sbCurrentBettor.adminToken}).catch(()=>[]);
@@ -1356,10 +1383,11 @@ async function loadMyBets(){
   el.innerHTML=bets.map(b=>{
     const statusColor=b.status==='won'?'badge-approved':b.status==='lost'?'badge-rejected':'badge-pending';
     const payoutTxt=b.status==='won'?`+${Number(b.payout).toLocaleString()} coins`:b.status==='lost'?`-${Number(b.amount).toLocaleString()} coins`:`${b.amount} coins wagered`;
+    const when=b.created_at?new Date(b.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
     return`<div class="entry-row flex-between">
       <div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700">${esc(b.line_title||'Bet')}</div>
-        <div style="font-size:11px;color:var(--muted)">Side: ${esc(b.side.toUpperCase())} · ${payoutTxt}</div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700">${esc(betLineLabel(b))}</div>
+        <div style="font-size:11px;color:var(--muted)">Picked: <b style="color:#cfd8cf">${esc(betSideLabel(b))}</b> · ${payoutTxt}${when?' · '+esc(when):''}</div>
       </div>
       <span class="badge ${statusColor}">${b.status}</span>
     </div>`;
@@ -1767,7 +1795,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_c
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-08-05-row-cap-pagination-001';
+const APP_VERSION='2026-08-05-server-side-aggregation-002';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
