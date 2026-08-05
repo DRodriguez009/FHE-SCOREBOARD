@@ -7,8 +7,12 @@
 Two things built off the day's post-mortem: a watchdog for the failure mode that started
 it, and an audit trail for the manual ledger edit it ended with.
 
-**1. Silent-truncation canary** — `scripts/canary.mjs`, scheduled by
-`.github/workflows/canary.yml` (09:00 ET weekdays, plus on-demand and on relevant pushes).
+**1. Silent-truncation canary** — `scripts/canary.mjs`. **Not yet scheduled**: the
+workflow that runs it (`.github/workflows/canary.yml`, 09:00 ET weekdays) could not be
+pushed, because writing to `.github/workflows/` requires `workflow` scope and the stored
+GitHub token has only `gist, read:org, repo`. The file exists locally and has to be added
+through the GitHub web UI or after granting the scope. **Until that happens the canary
+only runs when someone runs it by hand, which means it is not yet watching anything.**
 For every anon-reachable RPC it asks PostgREST how many rows actually matched
 (`Prefer: count=exact`) and compares that to how many came back. Divergence = data being
 dropped silently, which is precisely what nobody noticed for days. Reads the Supabase URL
@@ -40,8 +44,12 @@ commission award. A trigger catches all routes including raw operator SQL.
 | Javier correction backfilled | PASS | 1495 delta, balance_after 2247, actor `derrick`, stamped at the real time |
 
 ### Blockers / Follow-ups:
-- [ ] `SLACK_WEBHOOK_URL` is not set as a repo secret, so the canary currently alerts only
-      via GitHub's failure email. Needs adding in repo Settings → Secrets.
+- [ ] **The canary is not scheduled yet** — `.github/workflows/canary.yml` exists locally
+      but could not be pushed without `workflow` token scope. Add it via the GitHub web UI
+      (Actions → New workflow → paste) or re-auth the token with `workflow`. Nothing is
+      being watched automatically until then.
+- [ ] `SLACK_WEBHOOK_URL` is not set as a repo secret, so once scheduled the canary would
+      alert only via GitHub's failure email. Add in repo Settings → Secrets.
 - [ ] The canary covers the scoreboard's public surface only. Authenticated endpoints
       (`get_all_commissions_admin`, the command-center NIPR route) are unchecked because
       they need credentials.
