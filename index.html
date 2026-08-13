@@ -741,9 +741,21 @@ async function rpcAll(fn,args,order){
 }
 
 // ── DATE HELPERS ──
-function startOfToday(){const d=new Date();d.setHours(0,0,0,0);return d;}
-function startOfWeek(){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-d.getDay());return d;}
-function startOfMonth(){const d=new Date();d.setHours(0,0,0,0);d.setDate(1);return d;}
+// Board period boundaries are the OFFICE's — Eastern — not the viewer's browser clock.
+// These used to take midnight in LOCAL time (new Date().setHours(0,0,0,0)), so a device
+// set ahead of ET (a UTC wall display, say) put its cutoff before true ET midnight and
+// leaked yesterday's late-evening deals into "Today". The streak/personal-best/sportsbook
+// buckets were already moved to ET (etDayKey, America/New_York); this closes the same gap
+// for the Today/Week/Month totals so every viewer sees the same day regardless of device.
+// etDayKey/weekStartKey/ET_DAY_FMT are function/const declarations below — hoisted, so
+// safe to call from here at runtime.
+function etParts(date){const p={};new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(date).forEach(x=>p[x.type]=x.value);return p;}
+// UTC instant of 00:00:00 Eastern on the given ET day key 'YYYY-MM-DD'. DST-safe: the
+// offset is read at the day's start, and DST flips at 2am so midnight is never ambiguous.
+function etMidnight(dayKey){const[y,m,d]=dayKey.split('-').map(Number);const wall=Date.UTC(y,m-1,d,0,0,0);const p=etParts(new Date(wall));const off=Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second)-wall;return new Date(wall-off);}
+function startOfToday(){return etMidnight(etDayKey(new Date()));}
+function startOfWeek(){return etMidnight(weekStartKey(etDayKey(new Date())));}
+function startOfMonth(){return etMidnight(etDayKey(new Date()).slice(0,8)+'01');}
 
 // ── APP STATE ──
 let adminAuthed=false,refreshTimer=null,currentPeriod='today',prevRankings={},prevTop=null;
