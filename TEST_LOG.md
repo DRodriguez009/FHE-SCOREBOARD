@@ -1,5 +1,71 @@
 # TEST_LOG.md
 
+## Fix + Verify — 2026-08-17 (a mis-settled line, and anon could mint coins)
+
+### Result: PASS
+
+Started from a report that "Albert beat Tommy on Friday but Tamayo lost his bet."
+
+**The mis-settlement.** The 2026-08-14 `Albert vs Thomas` line auto-settled Monday 07:30 ET
+as Thomas winning on commission totals of *Albert 220 vs Thomas 365*. Albert's real Friday
+total was **570** — his second Friday deal (350) was still pending when the settler ran, and
+was approved afterwards. Since `20260813160000` approval stamps `approved_at = created_at`
+(so a sale counts on the day it was made — correct, and it stays), that late approval landed
+back on Friday and changed the verdict of an already-closed line. Every bet on the line was
+on Albert, so seven bets were wrongly marked lost and nobody was paid.
+
+Neither `settle_bet_line` nor `cancel_bet_line` accepts a closed line, and the admin screen
+rendered no buttons for one, so the correction had to be hand-written SQL. That is the second
+time a disputed bet couldn't be settled from the screen (see the 2026-08-04 note in
+`index.html`). Fixed properly in `20260817150000`.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| Friday's line corrected | PASS | `winning_side` b→a; all 7 Albert bets `won`; Tamayo +320, Bryan Sequeira +752 (709/22/11/5/3/2) |
+| Payouts are gross, not profit | PASS | stakes were debited at `place_bet`, so a win credits `round(amount × odds)` — matches every prior settled bet |
+| Corrections are attributable | PASS | all 7 `coin_ledger` rows carry `reason` + `actor` via `app.coin_reason`/`app.coin_actor`; every historical row has those null |
+| `sb_resettle_line` reverse+re-apply | PASS | throwaway admin/agents/line/bets: wrong settle → 800/660, correct to a → 1120/400, void → 1000/500 (stakes back), all rolled back, 0 residue |
+| Refuses an open line | PASS | `line is open, not settled — use settle_bet_line or cancel_bet_line` |
+| Settler defers a day with pending sales | PASS | synthetic past-day line with one pending sale stayed `open` instead of settling on partial data |
+| Settler settles once approved | PASS | same line, after approval (600 vs 200) → settled, side a |
+| Settler self-corrects a late approval | PASS | reproduced Friday exactly: settled as b, then a late approval landed → next run flipped it to a with an explanatory note |
+| A `[manual]` verdict survives the settler | PASS | admin correction marked `[manual]` was **not** overridden — human decision outranks the commission math |
+| Live dry run on real data | PASS | the new settler would touch **0** current lines — nothing else is mis-settled |
+| Cron now runs twice a weekday | PASS | `30 11,20 * * 1-5` — 07:30 ET was before the pending queue is worked, which caused this |
+| Admin screen can correct a closed line | PASS | browser-verified: settled lines show "Correct → X won" + "Void & refund"; the tie-cancelled line offers both sides; open lines unchanged |
+| Restored PIN works end-to-end | PASS | signed in as Derrick Rodriguez on the real login → "full admin access" (session revoked after) |
+| JS syntax | PASS | `node --check` on the extracted script |
+
+**🔴 Found while reading the grants: anon could mint unlimited coins.**
+`credit_wallet(type, id, delta)` adds coins to any wallet, takes **no credential**, and was
+executable by `anon`. Verified live from a real anon REST call with the publishable key that
+ships in `index.html`: **HTTP 200**, and it returns the new balance. Agent UUIDs are public on
+the board, so anyone could credit themselves any amount — or drain a rival with a negative
+delta. `auto_settle_daily_matchups()` and `read_wallet()` were in the same state.
+
+The 2026-07-31 migration *tried* to close the settler with
+`revoke execute ... from anon, authenticated` — but a new function's EXECUTE belongs to
+**PUBLIC**, which anon inherits, so the ACL still read `=X/postgres` and the revoke was a
+no-op. Any revoke must name `public` too.
+
+| Check | Result | Notes |
+|-------|--------|-------|
+| `credit_wallet` before | **FAIL (hole confirmed)** | anon REST call → HTTP 200 + balance returned |
+| `credit_wallet` after | PASS | `42501 permission denied for function credit_wallet` |
+| `auto_settle_daily_matchups` after | PASS | `42501` (first probe was inconclusive — wrong arg shape returned PGRST202, retested with `{}`) |
+| `read_wallet` after | PASS | `42501` |
+| `sb_resettle_line` (internal) | PASS | `42501` — server-only, no auth of its own |
+| `admin_resettle_bet_line` reachable but gated | PASS | anon call with junk credentials → `P0001 invalid admin credentials` |
+| Nothing legitimate broke | PASS | neither function is referenced in `index.html` or `scripts/`; real callers are SECURITY DEFINER (run as owner) or pg_cron (runs as postgres) |
+
+### Blockers / Follow-ups:
+- [ ] This project has never had a full function-level audit like `goal-leaderboard` got on
+  2026-08-14. `credit_wallet` was found by accident. `scripts/audit-guard-probe.py` in
+  `fhe-command-center` takes a project ref as `argv[1]` — point it here.
+- [ ] A clawback can leave a wallet negative if the winnings were already spent. Allowed on
+  purpose (refusing would recreate the un-correctable hole) and reported in the RPC's return,
+  but `place_bet` will block that person until they earn it back.
+
 ## Fix + Verify — 2026-08-05 (day bucketing was UTC, not Eastern)
 
 ### Result: PASS

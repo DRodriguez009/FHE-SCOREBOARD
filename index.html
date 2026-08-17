@@ -1456,6 +1456,21 @@ async function loadManagerLines(){
   el.innerHTML=lines.map(line=>{
     const isOpen=line.status==='open';
     const isSettled=line.status==='settled';
+    const isClosed=isSettled||line.status==='cancelled';
+    // A closed line used to be a dead end on this screen: no buttons rendered, and both
+    // settle_bet_line and cancel_bet_line reject a non-open line. That is why the wrongly
+    // settled 2026-08-14 Albert/Thomas line had to be fixed with hand-written SQL, and why
+    // the disputed 2026-08-04 bet couldn't be settled from here either. Corrections now
+    // have a real path: admin_resettle_bet_line reverses the old payouts and re-applies.
+    let fixButtons='';
+    if(isClosed){
+      const sides=line.type==='head_to_head'?[['a',line.agent_a_name+' won'],['b',line.agent_b_name+' won']]
+        :line.type==='over_under'?[['over','Over won'],['under','Under won']]
+        :[['yes','Yes won'],['no','No won']];
+      fixButtons=sides.filter(([s])=>s!==line.winning_side).map(([s,label])=>
+        `<button class="btn btn-ghost btn-sm" onclick="resettleLine('${esc(line.id)}','${s}')">Correct → ${esc(label)}</button>`).join('')
+        +`<button class="btn btn-ghost btn-sm" style="border-color:#8b0000;color:#f07070" onclick="resettleLine('${esc(line.id)}',null)">Void &amp; refund</button>`;
+    }
     let settleButtons='';
     if(isOpen){
       if(line.type==='head_to_head')settleButtons=`<button class="btn btn-green btn-sm" onclick="settleLine('${esc(line.id)}','a')">${esc(line.agent_a_name)} won</button><button class="btn btn-green btn-sm" onclick="settleLine('${esc(line.id)}','b')">${esc(line.agent_b_name)} won</button>`;
@@ -1469,18 +1484,20 @@ async function loadManagerLines(){
         <span class="badge ${isOpen?'badge-pending':isSettled?'badge-approved':'badge-rejected'}">${line.status}</span>
       </div>
       ${isSettled?`<div style="font-size:12px;color:var(--muted)">Winner: ${esc(line.winning_side)} ${line.settlement_note?'· '+esc(line.settlement_note):''}</div>`:''}
+      ${!isSettled&&isClosed&&line.settlement_note?`<div style="font-size:12px;color:var(--muted)">${esc(line.settlement_note)}</div>`:''}
       ${isOpen?`<div class="flex" style="gap:6px;flex-wrap:wrap">${settleButtons}</div>`:''}
+      ${isClosed?`<div class="flex" style="gap:6px;flex-wrap:wrap;margin-top:6px">${fixButtons}</div>`:''}
     </div>`;
   }).join('');
 }
 
 async function settleLine(lineId,winningSide){
-  if(!confirm('Settle this line and pay out winners? This cannot be undone.'))return;
+  if(!confirm('Settle this line and pay out winners? A mistake can be corrected afterwards, but everyone sees the result first.'))return;
   try{
     await rpc('settle_bet_line',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_line_id:lineId,p_winning_side:winningSide});
     alert$('sb-alert','Line settled and payouts distributed!','success');
     loadSportsbook();
-  }catch(e){alert$('sb-alert','Error settling line.','error');}
+  }catch(e){alert$('sb-alert','Error settling line: '+errText(e),'error');}
 }
 
 async function cancelLine(lineId){
@@ -1489,8 +1506,31 @@ async function cancelLine(lineId){
     await rpc('cancel_bet_line',{p_username:currentAdmin.username,p_password:currentAdmin.token,p_line_id:lineId});
     alert$('sb-alert','Line cancelled, all bets refunded.','info');
     loadSportsbook();
-  }catch(e){alert$('sb-alert','Error cancelling line.','error');}
+  }catch(e){alert$('sb-alert','Error cancelling line: '+errText(e),'error');}
 }
+
+// Correct a line that is already closed. Reverses whatever the previous settlement paid,
+// then applies the new outcome (or refunds every stake when side is null).
+async function resettleLine(lineId,side){
+  const what=side?'re-settle it as "'+side+'"':'void it and refund every stake';
+  if(!confirm('Correct this closed line?\n\nThis reverses the payouts already made and will '+what+
+    '.\n\nWinnings already paid get clawed back, which can leave someone with a negative balance until they earn it back.'))return;
+  const reason=prompt('Why is this being corrected? (recorded on the line and against every coin movement)','');
+  if(reason===null)return;
+  try{
+    const r=await rpc('admin_resettle_bet_line',{p_username:currentAdmin.username,p_password:currentAdmin.token,
+      p_line_id:lineId,p_winning_side:side,p_reason:reason});
+    let msg=`Corrected: ${r.won} won, ${r.lost} lost, ${r.refunded} refunded — ${r.paid_out} coins paid out, ${r.clawed_back} clawed back.`;
+    if(r.negative_wallets&&r.negative_wallets.length)
+      msg+=' Now negative: '+r.negative_wallets.map(w=>w.wallet+' ('+w.coins+')').join(', ')+'.';
+    alert$('sb-alert',msg,'success');
+    loadSportsbook();
+  }catch(e){alert$('sb-alert','Could not correct the line: '+errText(e),'error');}
+}
+
+// Surface the real Postgres message. Swallowing it is what made a broken RPC look
+// identical to a wrong PIN on the login screen for weeks.
+function errText(e){return e&&e.message?e.message:String(e);}
 
 document.getElementById('bet-modal').addEventListener('click',function(e){if(e.target===this)closeBetModal();});
 
