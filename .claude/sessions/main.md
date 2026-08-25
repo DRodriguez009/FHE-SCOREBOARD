@@ -800,3 +800,85 @@
   (month grouping) and bet history are the least verified.
 - Ten agents' personal bests dropped when day bucketing moved to ET — they were
   double-counted days, not a takeaway. Worth pre-empting on the floor.
+
+## Session — 2026-08-25 16:05 (wt: fhe-scoreboard)
+
+### Work Done
+- **Root-caused "the bets were not paid out to Tamayo."** Not a payout-math bug: the Aug-24
+  line `de9f3fc8` "Gabriel T. vs Bryan" was never settled. It sat `open` while all seven
+  sibling Aug-24 lines settled at 07:30 ET. Real totals Tamayo 745 vs Bryan 555 → side `a`.
+  The pending-sales guard from `20260817150000` fired (one agent still had an unapproved
+  Aug-24 sale) and its `continue` wrote nothing anywhere.
+- **The trap that made it near-undiagnosable:** approval stamps `approved_at = created_at`,
+  so the sale that was pending at 07:30 now looks like it was approved on Aug 24 with the
+  other six. The data shows a line that obviously should have settled and no trace of why
+  it didn't. Do not conclude the settler is broken.
+- **Paid Tamayo:** bet `won`, 1,588 credited (gross, `amount * odds`), wallet 3,500 → 5,088,
+  with `app.coin_reason`/`app.coin_actor` set so the ledger row isn't a null-reason mystery.
+  (Predicted 6,588 and was wrong — he placed a new 1,500 bet between the balance read and
+  the settlement. Ledger reconciles: 5,000 − 1,500 + 1,588.)
+- **`20260825140000`** — settler writes a reason when it defers; `get_my_bets` returns
+  `line_status`/`line_note`; **both approval RPCs now call the settler**, so clearing the
+  last pending sale settles that day at once instead of waiting up to 9h. Both approval
+  paths also set the coin-audit GUCs (closes an open item from `20260805210000`).
+- **`20260825160000`** — revoked `assert_admin` and `log_coin_change` from `public, anon,
+  authenticated`. Audited all 43 SECURITY DEFINER fns: those two were the only convention
+  violations. `credit_wallet` is still correctly locked (Aug-17 fix held) and `verify_bettor`
+  resolves 256-bit tokens, not PINs, so it is not a brute-force oracle.
+- **Canary is finally running.** The gh token now HAS `workflow` scope — the Aug-5 blocker
+  was stale. Pushed the workflow, removed the `.git/info/exclude` parking, and it ran in CI
+  and passed in 18s. Then added a stuck-line check: past-day open line WITH a defer note →
+  Slack warning, exit 0; WITHOUT one → hard failure, exit 1.
+- **Migration-history drift, found and fixed everywhere.** fhe-scoreboard had 0 of 14 files
+  declared; the four repos on the SHARED DB (`eawpwwctsifzcclrwvww`) had 0 of 54. Verified
+  applied before declaring: 45 of 54 name an object and every object exists. Backfilled both
+  (scoreboard, and shared 65 → 118). `db push` was a live landmine — past its first hard
+  error it would have run `delete from time_clock.policy_config where
+  key='slack_mention_user_ids'` and re-inserted the gt_stats/gt_periods seeds.
+- **Swept the row cap.** `max_rows` is 1000 on EVERY FHE project, but nothing is currently
+  truncating: `carrier_agent_states` (974) is read via `carrier_detail` which returns
+  **jsonb** — a single row the cap can't truncate — and command-center's nipr read pages
+  with `.range()`. The return *shape* decides exposure, not table size.
+
+### Decisions
+- **Fixed the cause, not just the symptom.** Making the deferral visible (notes + UI + Slack)
+  only makes the wait legible; calling the settler from the approval paths is what stops it
+  recurring. Shipped both.
+- **Ran the settler rather than `admin_resettle_bet_line`.** The line was `open`, not
+  mis-settled, so the resettler was the wrong tool — and it stamps `[manual]`, permanently
+  exempting the line from auto-correction. Dry-ran the scope first: exactly one line changed.
+- **Tested destructive DB changes with atomic `DO` blocks ending in a deliberate `raise`.**
+  No staging copy exists for these shared DBs. The block rolls back every insert, coin
+  movement and throwaway `sb_issue_session` token while still returning results in the error
+  payload. Verified zero residue after each. This is the reusable technique here.
+- **Verified object existence before declaring 54 migrations applied.** Marking an unapplied
+  migration as applied would hide a real gap, so parsed every `create function|table|trigger`
+  and checked `pg_proc`/`information_schema`/`pg_trigger`. Zero missing.
+- **Did not force a screenshot of the deferred-note row.** It needs an agent login and a
+  live deferred line; using someone's PIN to browse their bet history wasn't mine to do.
+- **Left `list_admin_names` anon-callable** (names are on a wall board) and the favicon 404.
+
+### Where Left Off
+- Clean tree, six commits pushed `cd751f2`..`ac0ddd2`. Live APP_VERSION
+  `2026-08-25-deferred-line-reason-001`, verified serving in the browser with no new console
+  errors (only the known favicon 404). Canary green in CI.
+- **BLOCKED — `max_rows` cannot be raised.** Management API returns "account does not have
+  the necessary privileges" on BOTH FHE projects: member, not admin, since the org migration.
+  Needs an org owner. This will block any future project-config change, not just this one.
+- **Never rendered:** the deferred-note row in bet history. Zero past-day open lines exist,
+  and the sportsbook is behind sign-in. It will appear on its own the first morning a sale is
+  still pending at 07:30 ET — and the canary now announces it in Slack at 09:00.
+- **Watch tomorrow 07:30 ET:** Thomas Eustace ($110) and Bryan Sequeira ($80) are pending,
+  each with an Aug-25 line. Unapproved, both lines defer — now with a stated reason.
+  Bryan appeared in this two days running; his sales routinely land in the queue late.
+- **Needs a human decision:** `fhe-coachings-tracker` has TWO files sharing version
+  `20260706170000` (`init_coaching_schema.sql` and `.local.sql`), both creating the same
+  tables. Duplicate version prefixes break `db push` independently of the drift, and the
+  `.local` variant probably shouldn't be in the migrations dir — deleting a migration is
+  the user's call. That's why the backfill inserted 53 rows for 54 files.
+- Supabase MCP grant still points at the empty `Derrick Org`, so `get_advisors` can't run.
+  Not blocking — the CLI and Management API both work.
+- The scoreboard's `jwt_secret` came back in the `/postgrest` config response and is in this
+  session's transcript on disk. Low urgency, but a rotation candidate if being strict.
+- Sibling repos have no truncation canary; only fhe-scoreboard does. The script reads its
+  URL/anon key out of `index.html`, so porting it is mostly config.

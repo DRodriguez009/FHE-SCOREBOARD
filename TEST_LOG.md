@@ -566,3 +566,46 @@ have the same drift.
 (zero past-day open lines), and the sportsbook requires sign-in, so there is nothing to
 photograph. It will render naturally the first morning a sale is still pending at 07:30 ET —
 and the canary now announces exactly that in Slack, which is the more useful signal anyway.
+
+---
+
+## Session 2026-08-25 (evening) — Lunch punch in the scoreboard nav
+
+### Feature Under Test: cross-project lunch button (`#tn-lunch`, next to Sportsbook)
+### Result: PASS
+
+The punch targets a **different Supabase project** (`eawpwwctsifzcclrwvww`, the shared FHE
+database) than the scoreboard's own (`sralgaskfktcynpdxjhj`). No migrations were written —
+`tct_lunch_punch(uuid,text,text)` and `tct_contractor_lunch_today(uuid,text,text)` were
+already granted to `anon`. What they needed was a *time-clock* session token, so the agent
+login now performs a second, invisible login against the time clock while the PIN is in hand.
+
+Verified with a disposable `Zzz Smoke Test` contractor (created, exercised, deleted
+child-rows-first; `auth_sessions` row revoked). All leftovers confirmed 0.
+
+| Test | Result | Notes |
+|---|---|---|
+| `tct_*` reachable with the anon key from a foreign origin | PASS | CORS preflight from `https://fhe-scoreboard.vercel.app` returns 200 |
+| Guard rejects a bogus token | PASS | `42501 not authorised` |
+| Guard rejects *someone else's* contractor id with a valid token | PASS | `42501` — `tct_actor_is_self_or_admin` holds across projects |
+| `tct_contractor_login_token` over anon REST | PASS | Returns `{id, team, contractor_name, token}`, token 64 hex |
+| Punch 1 → start | PASS | `{"action":"started","minutes_allowed":60}` |
+| Punch 2 → close and score | PASS | `{"action":"ended","minutes_over":0,"points_assessed":0}` |
+| Punch 3 → refused | PASS | `{"lunch_already_taken":true}` |
+| Exempt agent (`clock_in_exempt=true`) | PASS | `lunch_today` returns `exempt:true`; button hides, matching the contractor page |
+| Button hidden when logged out | PASS | `display:none` until both a scoreboard *and* a time-clock session exist |
+| Nav order | PASS | scoreboard → agent → **lunch** → sportsbook…, `tn-lunch` sits directly after `tn-sportsbook` |
+| Three label states, in a real browser | PASS | `🍔 Lunch` → `🍔 Back from Lunch · 47m left` (amber) → `🍔 Lunch Taken` (dimmed) |
+| Countdown flips to over-time | PASS | Past the allowance the button reads `· 12m OVER` and turns red (`.lunch-over`); reverts correctly when the clock is restored |
+| Due-back time shown before and after starting | PASS | Confirm says "due back by 7:52 PM"; the receipt repeats it. Tooltip carries start + due-back at all times |
+| Dead time-clock token degrades safely | PASS | On `42501` the bridge session is dropped and the button hides; **the scoreboard agent stays logged in** |
+| Page loads clean | PASS | Only the known `favicon.ico` 404 — no new console errors |
+
+### Blockers / Follow-ups:
+- [ ] Not yet exercised by a **real** agent through the actual login form — that needs a live
+      PIN. Watch the first agent who signs in and confirm the button appears for them.
+- [ ] The second login feeds the time clock's brute-force counter. It is capped at **one
+      attempt per tab** (`fhe-scoreboard-tct-skip`), so a PIN that diverges between the two
+      apps costs one failure, not eight. If PINs are ever rotated in one app only, this is
+      the thing that breaks — and it breaks quietly, as a missing button.
+- [ ] Exempt staff on the scoreboard today: **Mark Caraher** only. He will never see the button.

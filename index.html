@@ -57,6 +57,11 @@ body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);m
 .tnav-btn:hover{color:var(--text)}
 .tnav-btn.active{color:var(--orange);border-bottom-color:var(--orange)}
 .tnav-btn.admin-btn{margin-left:auto}
+/* Lunch punch lives in the nav but is an ACTION, not a page — it never takes .active.
+   Its colour is its state: idle = normal nav item, open break = amber, taken = dimmed. */
+.tnav-btn.lunch-open{color:#f0a020;border-bottom-color:#f0a020}
+.tnav-btn.lunch-done{color:var(--muted);cursor:default;opacity:.6}
+.tnav-btn.lunch-over{color:#f07070;border-bottom-color:#f07070}
 .pcnt-pill{background:var(--orange);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:5px}
 
 /* ── PAGES ── */
@@ -347,6 +352,9 @@ select option{background:#020802}
   <button class="tnav-btn active" id="tn-scoreboard" onclick="navTo('scoreboard')">📺 Scoreboard</button>
   <button class="tnav-btn" id="tn-agent" onclick="navTo('agent')">👤 Agent Portal</button>
   <button class="tnav-btn" id="tn-sportsbook" onclick="navTo('sportsbook')">🎲 Sportsbook</button>
+  <!-- Lunch punch (2026-08-25). Hidden until an agent is logged in AND the time-clock
+       bridge has a session; hidden permanently for clock_in_exempt staff. See LUNCH BRIDGE. -->
+  <button class="tnav-btn" id="tn-lunch" style="display:none" onclick="lunchClick()">🍔 Lunch</button>
   <button class="tnav-btn admin-btn" id="tn-admin" onclick="navTo('admin')">🛡️ Admin <span class="pcnt-pill" id="hdr-pcnt" style="display:none">0</span></button>
 </nav>
 
@@ -695,6 +703,23 @@ const sb = supabase.createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyYWxnYXNrZmt0Y3lucGR4amhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NTU3NjUsImV4cCI6MjA5ODMzMTc2NX0.XqtIEprNHOZgXbI7hvn5O1OENQeLzbx5ZmvW9gV206E'
 );
 
+// ── TIME-CLOCK CLIENT ──
+// The lunch punch lives in a DIFFERENT Supabase project (eawpwwctsifzcclrwvww, the shared
+// FHE database behind the hub / time clock / command center). The scoreboard has its own
+// project and its own session tokens, and a scoreboard token means NOTHING to that database —
+// so this client carries a separate time-clock session, minted by the time clock's own login
+// RPC. Both keys are anon/publishable and already visible in each app's page source.
+//
+// ⚠️ NOTHING on this client may be allowed to break the scoreboard. Every call goes through
+// tctRpc(), which resolves to {data,error} and never throws. This is the 2026-08-19 rule from
+// the time-clock repo: a secondary feature must never become a hard dependency of a primary
+// one. If the time-clock project is down, the lunch button silently disappears and the
+// leaderboard, sportsbook and commissions carry on untouched.
+const tct = supabase.createClient(
+  'https://eawpwwctsifzcclrwvww.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhd3B3d2N0c2lmemNjbHJ3dnd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NDQyMDYsImV4cCI6MjA5ODQyMDIwNn0.Hx1rE1bYd2J6f08W8LIKxJSldNzqiBl1JqfLR1M8zec'
+);
+
 // ── AUTH STATE ── (credentials are verified server-side via RPC on every call; nothing is trusted client-side)
 let currentAdmin=null; // {username,password,name} — password kept in memory only, re-sent per admin RPC call
 let selectedMgrUsername=null;
@@ -1004,6 +1029,11 @@ async function agentLogin(){
   // Only the server-issued session token is retained. The PIN itself is never kept
   // in memory or storage, and is never sent again after this one login call.
   sessionStorage.setItem(AGENT_SESSION_KEY,JSON.stringify({token:agent.token}));
+  // Second, invisible login against the time-clock project so the nav's lunch button can
+  // punch. This is the ONLY moment the PIN is available for it. Best-effort: tctLogin
+  // never throws and a failure just means no lunch button. See LUNCH BRIDGE.
+  await tctLogin(name,pin);
+  refreshLunchNav();
   document.getElementById('agent-welcome').textContent='Welcome, '+agent.name;
   document.getElementById('agent-login-section').style.display='none';
   document.getElementById('agent-portal-section').style.display='block';
@@ -1013,6 +1043,9 @@ async function agentLogout(){
   // Read the token from storage, not from in-memory state: if currentAgent was
   // already cleared the revoke would silently no-op and leave a live token behind.
   await revokeStoredSession(AGENT_SESSION_KEY,currentAgent&&currentAgent.token);
+  // Both sessions die together. Leaving the time-clock token alive after a scoreboard
+  // sign-out would let the next person at this browser punch the first agent's lunch.
+  await tctLogout();
   currentAgent=null;sessionStorage.removeItem(AGENT_SESSION_KEY);document.getElementById('agent-login-section').style.display='block';document.getElementById('agent-portal-section').style.display='none';document.getElementById('al-name').value='';document.getElementById('al-pin').value='';
 }
 
@@ -1029,10 +1062,214 @@ async function restoreAgentSession(){
   if(!who||who.principal!=='agent'){sessionStorage.removeItem(AGENT_SESSION_KEY);return;}
   const agent={id:who.identity,name:who.display_name,token:creds.token};
   currentAgent={...agent};
+  // Token-only restore — a reload never re-sends a PIN, so it cannot feed either app's
+  // brute-force counter. A dead time-clock token surfaces as a 42501 on the first read.
+  restoreTctSession();
+  refreshLunchNav();
   document.getElementById('agent-welcome').textContent='Welcome, '+agent.name;
   document.getElementById('agent-login-section').style.display='none';
   document.getElementById('agent-portal-section').style.display='block';
   loadAgentView();
+}
+
+// ══════════════════ LUNCH BRIDGE ══════════════════
+// A "Start Lunch" / "Back from Lunch" button in the top nav, punching the SAME clock as
+// time-clock-tracking.vercel.app/contractor. No database work was needed: the time clock's
+// tct_lunch_punch(uuid,text,text) and tct_contractor_lunch_today(uuid,text,text) are already
+// granted to anon. What they require is a TIME-CLOCK session token — resolved by
+// tct_actor_is_self_or_admin via fhe_session_resolve — which the scoreboard's own token
+// cannot satisfy, since it is minted in a different project.
+//
+// So the agent logs in twice, invisibly: while the PIN is still in the login field it is sent
+// once more, to the time clock's own throttled login RPC, and the token that comes back is
+// kept under its own key. Agent PINs are the same in both apps (master credentials sheet), so
+// the second login succeeds silently and the agent never sees it.
+//
+// THE ONE THING TO BE CAREFUL ABOUT: that second login feeds the time clock's brute-force
+// counter. If an agent's PINs ever diverge between the two apps, every scoreboard login would
+// burn a time-clock failure and could lock them out of the real clock after 8. Hence
+// TCT_SKIP_KEY — one attempt per tab, never retried after a failure.
+const TCT_SESSION_KEY='fhe-scoreboard-tct-session';
+const TCT_SKIP_KEY='fhe-scoreboard-tct-skip';
+let tctSession=null;   // {id,name,token} — the time-clock identity, distinct from currentAgent
+let lunchToday=null;   // last tct_contractor_lunch_today payload
+let lunchTimer=null;   // ticks the elapsed-minutes label while a break is open
+let lunchBusy=false;   // in-flight guard: a double-tap must not open and immediately close
+
+// Never throws. Callers branch on .error and degrade to hiding the button.
+async function tctRpc(fn,args){
+  try{
+    const{data,error}=await tct.rpc(fn,args);
+    return{data,error};
+  }catch(e){
+    return{data:null,error:e};
+  }
+}
+
+// Called from agentLogin() with the PIN still in hand. Best-effort by design: a failure here
+// leaves the scoreboard login completely intact and simply means no lunch button.
+async function tctLogin(name,pin){
+  if(sessionStorage.getItem(TCT_SKIP_KEY))return;
+  const{data,error}=await tctRpc('tct_contractor_login_token',{p_contractor_name:name,p_pin:pin});
+  const row=Array.isArray(data)?data[0]:data;
+  if(error||!row||!row.token){
+    // Either this agent has no time-clock record, or the PINs have diverged. Do not retry
+    // this tab — see the brute-force note above.
+    sessionStorage.setItem(TCT_SKIP_KEY,'1');
+    return;
+  }
+  tctSession={id:row.id,name:row.contractor_name,token:row.token};
+  // Only the token is retained. The PIN was sent once, to the one throttled login RPC.
+  sessionStorage.setItem(TCT_SESSION_KEY,JSON.stringify(tctSession));
+}
+
+// A reload restores the token rather than re-sending a PIN, so refreshing the page can never
+// contribute to the brute-force counter. The token is validated implicitly: the first
+// lunch-today read either works or 42501s, and refreshLunchNav drops the session on 42501.
+function restoreTctSession(){
+  const stored=sessionStorage.getItem(TCT_SESSION_KEY);
+  if(!stored)return;
+  try{
+    const s=JSON.parse(stored);
+    if(s&&s.id&&s.name&&s.token)tctSession=s;
+  }catch(e){sessionStorage.removeItem(TCT_SESSION_KEY);}
+}
+
+function clearTctSession(){
+  tctSession=null;lunchToday=null;
+  sessionStorage.removeItem(TCT_SESSION_KEY);
+  stopLunchTimer();
+  const btn=document.getElementById('tn-lunch');
+  if(btn)btn.style.display='none';
+}
+
+async function tctLogout(){
+  const tok=tctSession&&tctSession.token;
+  clearTctSession();
+  sessionStorage.removeItem(TCT_SKIP_KEY);
+  // Awaited, not fire-and-forget: an un-awaited revoke leaves the token live for 12h while
+  // the browser looks signed out. That exact bug shipped once in this file already.
+  if(tok)await tctRpc('fhe_session_revoke',{p_token:tok});
+}
+
+function stopLunchTimer(){if(lunchTimer){clearInterval(lunchTimer);lunchTimer=null;}}
+
+function lunchElapsedMin(startedAt){
+  return Math.max(0,Math.round((Date.now()-new Date(startedAt).getTime())/60000));
+}
+// The allowance is floating, so "due back" is start + allowance, never a fixed wall-clock
+// time. This is the number an agent actually needs to hold in their head.
+function lunchDueBack(startedAt,allowed){
+  return new Date(new Date(startedAt).getTime()+(allowed||60)*60000);
+}
+function etTime(ts){
+  return new Date(ts).toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'});
+}
+
+// Reads the live state and paints the nav button. The button is HIDDEN — not disabled, not
+// greyed — whenever lunch does not apply: no time-clock session, or clock_in_exempt staff.
+// Exempt is the flag that governs the clock-in too, so this matches the contractor page
+// exactly: exempt staff are never asked to track lunch and never see the control.
+async function refreshLunchNav(){
+  const btn=document.getElementById('tn-lunch');
+  if(!btn)return;
+  if(!currentAgent||!tctSession){btn.style.display='none';return;}
+
+  const{data,error}=await tctRpc('tct_contractor_lunch_today',{
+    p_contractor_id:tctSession.id,p_actor_name:tctSession.name,p_actor_pin:tctSession.token
+  });
+  if(error){
+    // 42501 means this time-clock token is dead (expired, or revoked elsewhere). Drop it and
+    // hide — the agent can still use the whole scoreboard, and re-logging in restores lunch.
+    if(String(error.code||'')==='42501')clearTctSession();
+    btn.style.display='none';
+    return;
+  }
+  lunchToday=data||null;
+  if(!lunchToday||lunchToday.exempt){btn.style.display='none';stopLunchTimer();return;}
+
+  btn.style.display='';
+  btn.classList.remove('lunch-open','lunch-done','lunch-over');
+  if(lunchToday.ended_at){
+    // One lunch per day, enforced server-side — nothing left to click.
+    btn.classList.add('lunch-done');
+    btn.textContent='🍔 Lunch Taken';
+    btn.title='Lunch taken '+etTime(lunchToday.started_at)+' – '+etTime(lunchToday.ended_at);
+    stopLunchTimer();
+  }else if(lunchToday.open){
+    btn.classList.add('lunch-open');
+    paintOpenLunch();
+    // Tick the elapsed count so an agent watching the nav can see the allowance running down.
+    stopLunchTimer();
+    lunchTimer=setInterval(paintOpenLunch,20000);
+  }else{
+    btn.textContent='🍔 Lunch';
+    btn.title='Floating '+(lunchToday.minutes_allowed||60)+'-minute lunch';
+    stopLunchTimer();
+  }
+}
+
+// Counts DOWN, not up: the number that matters is how long is left, and once that number
+// goes negative it is costing points, so the button flips to an over-time state and says so.
+function paintOpenLunch(){
+  const btn=document.getElementById('tn-lunch');
+  if(!btn||!lunchToday||!lunchToday.open)return;
+  const allowed=lunchToday.minutes_allowed||60;
+  const left=allowed-lunchElapsedMin(lunchToday.started_at);
+  const over=left<0;
+  btn.classList.toggle('lunch-over',over);
+  btn.textContent=over?('🍔 Back from Lunch · '+Math.abs(left)+'m OVER')
+                      :('🍔 Back from Lunch · '+left+'m left');
+  btn.title='Started '+etTime(lunchToday.started_at)+' · due back '+etTime(lunchDueBack(lunchToday.started_at,allowed))
+    +(over?' · over by '+Math.abs(left)+' min, this is costing points':'');
+}
+
+// The punch itself. Confirmed in both directions: this button sits in a nav bar where a
+// mistap is far likelier than on the dedicated contractor page, and both a stray start
+// (allowance running unnoticed) and a stray end (lunch consumed early) have real
+// consequences — the day's one lunch is spent either way.
+async function lunchClick(){
+  if(lunchBusy||!tctSession||!lunchToday)return;
+  if(lunchToday.ended_at)return;
+  const starting=!lunchToday.open;
+  const allowed=lunchToday.minutes_allowed||60;
+  const msg=starting
+    ?'Start your lunch now?\n\nYou get '+allowed+' minutes — due back by '+etTime(lunchDueBack(Date.now(),allowed))+'.\nGoing over costs attendance points.'
+    :'Clock back in from lunch?\n\nYou have been out '+lunchElapsedMin(lunchToday.started_at)+' of '+allowed+' minutes.';
+  if(!confirm(msg))return;
+
+  lunchBusy=true;
+  const btn=document.getElementById('tn-lunch');
+  if(btn)btn.textContent='🍔 …';
+  const{data,error}=await tctRpc('tct_lunch_punch',{
+    p_contractor_id:tctSession.id,p_actor_name:tctSession.name,p_actor_pin:tctSession.token
+  });
+  lunchBusy=false;
+
+  if(error){
+    if(String(error.code||'')==='42501'){
+      clearTctSession();
+      alert('Your time-clock session expired. Sign out and back in to punch lunch.');
+      return;
+    }
+    alert('Could not reach the time clock. Punch from the time clock app instead:\nhttps://time-clock-tracking.vercel.app');
+    await refreshLunchNav();
+    return;
+  }
+
+  const r=data||{};
+  if(r.rejected){
+    alert(r.reason==='exempt'?"You're not required to track lunch.":'Lunch punch was rejected.');
+  }else if(r.lunch_already_taken){
+    alert("You've already taken your lunch today.");
+  }else if(r.action==='started'){
+    alert('Lunch started '+etTime(r.started_at)+'.\n\nBe back by '+etTime(lunchDueBack(r.started_at,r.minutes_allowed))+' — that is your full '+r.minutes_allowed+' minutes.');
+  }else if(r.action==='ended'){
+    alert(Number(r.points_assessed)>0
+      ?'Back at '+etTime(r.ended_at)+' — '+r.minutes_taken+' min lunch, '+r.minutes_over+' min over, '+r.points_assessed+' point(s) assessed.'
+      :'Back at '+etTime(r.ended_at)+' — '+r.minutes_taken+' min lunch, on time.');
+  }
+  await refreshLunchNav();
 }
 
 // ── DAILY MOTIVATION ──
@@ -1903,7 +2140,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_c
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-08-25-deferred-line-reason-001';
+const APP_VERSION='2026-08-25-lunch-nav-button-003';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
