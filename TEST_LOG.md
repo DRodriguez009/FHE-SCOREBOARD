@@ -592,7 +592,9 @@ child-rows-first; `auth_sessions` row revoked). All leftovers confirmed 0.
 | Punch 1 → start | PASS | `{"action":"started","minutes_allowed":60}` |
 | Punch 2 → close and score | PASS | `{"action":"ended","minutes_over":0,"points_assessed":0}` |
 | Punch 3 → refused | PASS | `{"lunch_already_taken":true}` |
-| Exempt agent (`clock_in_exempt=true`) | PASS | `lunch_today` returns `exempt:true`; button hides, matching the contractor page |
+| Exempt agent (`clock_in_exempt=true`) | PASS | `lunch_today` returns `exempt:true`; renders dimmed `🍔 Lunch · Not Required` (was: hidden — changed, see below) |
+| Exempt button is genuinely inert | PASS | Clicking fires no confirm, no RPC, no alert; label unchanged |
+| Non-exempt path after the exempt change | PASS | Flipped the flag back and re-ran all three states — `lunch-exempt` class gone, countdown works |
 | Button hidden when logged out | PASS | `display:none` until both a scoreboard *and* a time-clock session exist |
 | Nav order | PASS | scoreboard → agent → **lunch** → sportsbook…, `tn-lunch` sits directly after `tn-sportsbook` |
 | Three label states, in a real browser | PASS | `🍔 Lunch` → `🍔 Back from Lunch · 47m left` (amber) → `🍔 Lunch Taken` (dimmed) |
@@ -608,4 +610,11 @@ child-rows-first; `auth_sessions` row revoked). All leftovers confirmed 0.
       attempt per tab** (`fhe-scoreboard-tct-skip`), so a PIN that diverges between the two
       apps costs one failure, not eight. If PINs are ever rotated in one app only, this is
       the thing that breaks — and it breaks quietly, as a missing button.
-- [ ] Exempt staff on the scoreboard today: **Mark Caraher** only. He will never see the button.
+- [x] Exempt staff on the scoreboard today: **Mark Caraher** only. Originally the button was
+      hidden for him, which reads as a broken feature rather than an intentional one. Now shows
+      a dimmed, inert `🍔 Lunch · Not Required`. Note this differs from having no time-clock
+      session at all, which still hides the control — there is nothing true to say in that case.
+- [x] Verified by a real login through the PRODUCTION form (disposable agent created in BOTH
+      databases with the same PIN, driven through `agentLogin()`, both deleted after). One PIN,
+      two logins, 64-char time-clock token minted, button rendered. This closes the "not yet
+      exercised by a real agent" follow-up.

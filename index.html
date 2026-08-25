@@ -62,6 +62,7 @@ body{font-family:'Barlow',sans-serif;background:var(--black);color:var(--text);m
 .tnav-btn.lunch-open{color:#f0a020;border-bottom-color:#f0a020}
 .tnav-btn.lunch-done{color:var(--muted);cursor:default;opacity:.6}
 .tnav-btn.lunch-over{color:#f07070;border-bottom-color:#f07070}
+.tnav-btn.lunch-exempt{color:var(--muted);cursor:default;opacity:.55}
 .pcnt-pill{background:var(--orange);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:5px}
 
 /* ── PAGES ── */
@@ -1186,10 +1187,17 @@ async function refreshLunchNav(){
     return;
   }
   lunchToday=data||null;
-  if(!lunchToday||lunchToday.exempt){btn.style.display='none';stopLunchTimer();return;}
+  if(!lunchToday){btn.style.display='none';stopLunchTimer();return;}
 
   btn.style.display='';
-  btn.classList.remove('lunch-open','lunch-done','lunch-over');
+  btn.classList.remove('lunch-open','lunch-done','lunch-over','lunch-exempt');
+  if(lunchToday.exempt){
+    btn.classList.add('lunch-exempt');
+    btn.textContent='🍔 Lunch · Not Required';
+    btn.title='Lunch tracking is not required for you.';
+    stopLunchTimer();
+    return;
+  }
   if(lunchToday.ended_at){
     // One lunch per day, enforced server-side — nothing left to click.
     btn.classList.add('lunch-done');
@@ -1230,7 +1238,10 @@ function paintOpenLunch(){
 // consequences — the day's one lunch is spent either way.
 async function lunchClick(){
   if(lunchBusy||!tctSession||!lunchToday)return;
-  if(lunchToday.ended_at)return;
+  // Both inert states. The server refuses an exempt punch anyway ({'rejected':true,
+  // 'reason':'exempt'}), but a dimmed control that still fires a round trip and pops an
+  // alert does not read as dimmed.
+  if(lunchToday.exempt||lunchToday.ended_at)return;
   const starting=!lunchToday.open;
   const allowed=lunchToday.minutes_allowed||60;
   const msg=starting
@@ -2140,7 +2151,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_c
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-08-25-lunch-nav-button-003';
+const APP_VERSION='2026-08-25-lunch-nav-button-004';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
