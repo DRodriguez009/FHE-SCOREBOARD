@@ -1,0 +1,31 @@
+name: canary
+
+# Watches for silent data truncation — the failure mode that broke the board on
+# 2026-08-05 and went unnoticed because nothing errored. Runs on a schedule rather than
+# on push, because the failure appears when the DATA grows, not when the code changes.
+on:
+  schedule:
+    - cron: "0 13 * * 1-5" # 09:00 ET on weekdays, before the room is busy
+  workflow_dispatch: # and on demand
+  push:
+    branches: [main]
+    paths:
+      - "scripts/canary.mjs"
+      - ".github/workflows/canary.yml"
+      - "index.html" # the Supabase URL/anon key are read from here
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # No install step: the script uses only built-in fetch and node:fs.
+      - name: Check for silent truncation
+        env:
+          # Optional. Without it the job still fails loudly and GitHub emails on failure.
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: node scripts/canary.mjs
