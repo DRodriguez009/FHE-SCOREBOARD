@@ -131,6 +131,47 @@ try {
   console.log(`  ✗ invariant: ERROR ${e.message}`);
 }
 
+// A head-to-head line for a PAST day should never still be open without explaining itself.
+// On 2026-08-25 the Aug-24 "Gabriel T. vs Bryan" line sat open while its seven siblings
+// settled, because the settler's pending-sales guard deferred it with a bare `continue` —
+// no note, no alert, and an agent's 794-coin winning bet showed a blank PENDING badge.
+// The settler now writes a reason when it defers (20260825140000), which splits this into
+// two very different cases:
+//   - open with a defer note  → working as designed, but someone should approve the sale
+//   - open with NO note       → the settler did not run, or crashed before reaching it
+console.log("");
+try {
+  const { rows: open } = await callRpc("get_open_lines", {});
+  // "Today" in Eastern, because that is the boundary the settler itself uses.
+  const todayET = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const past = (open ?? []).filter(
+    (l) =>
+      l.type === "head_to_head" &&
+      new Date(l.created_at).toLocaleDateString("en-CA", { timeZone: "America/New_York" }) < todayET,
+  );
+  const deferred = past.filter((l) => (l.settlement_note ?? "").startsWith("Awaiting sale approvals"));
+  const silent = past.filter((l) => !(l.settlement_note ?? "").startsWith("Awaiting sale approvals"));
+
+  if (silent.length) {
+    failures.push(
+      `${silent.length} past-day line(s) still open with no deferral reason: ` +
+        silent.map((l) => l.title).join(", ") +
+        `. The auto-settler either did not run or failed before reaching them — stakes are ` +
+        `debited and nobody has been paid.`,
+    );
+    console.log(`  ✗ stuck lines: ${silent.length} open with no reason`);
+  } else {
+    console.log(`  ✓ no unexplained open lines from past days`);
+  }
+
+  for (const l of deferred) {
+    notes.push(`"${l.title}" is held: ${l.settlement_note}. Approving the sale settles it immediately.`);
+  }
+} catch (e) {
+  failures.push(`stuck-line check failed to run — ${e.message}`);
+  console.log(`  ✗ stuck lines: ERROR ${e.message}`);
+}
+
 for (const n of notes) console.log(`  ! ${n}`);
 
 async function notifySlack(text) {
