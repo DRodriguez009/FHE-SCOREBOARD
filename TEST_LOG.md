@@ -551,3 +551,18 @@ Verified afterwards that nothing persisted.
 ending 2026-08-01. If you keep using `db query -f`, the history table needs backfilling or
 `db push` becomes a landmine. Only the scoreboard was checked — the sibling repos likely
 have the same drift.
+
+### Follow-up: queue worked through
+| Item | Result | Notes |
+|---|---|---|
+| Backfill shared-DB migration history (53 versions) | DONE | 65 → 118 rows; all 54 files across the 4 repos now declared, 0 pending. `db push` is no longer a landmine |
+| Raise `max_rows` to 5000 | **BLOCKED** | Management API returns "account does not have the necessary privileges" on both FHE projects — member, not admin, since the org migration. Needs an org owner (or the dashboard, if that role allows it) |
+| Canary: alert on stuck / held lines | DONE | `get_open_lines` is `SETOF bet_lines` so it already carries `settlement_note` — no new RPC. Held → Slack warning, exit 0. Silent → hard failure, exit 1 |
+| Canary new check catches both branches | PASS | Verified by stubbing only the data source and keeping the real logic. The silent case is the Tamayo bug exactly — it would have fired at 09:00 ET |
+| Production loads clean after deploy | PASS | Only the known `favicon.ico` 404; no new console errors. Sportsbook tab renders |
+| All three UI edits shipped and parse | PASS | `APP_VERSION=2026-08-25-deferred-line-reason-001`; `loadMyBets`/`betLineLabel` defined (so the script parsed past every edit); `heldNote`, `b.line_note`, `b.line_status` present; admin note un-gated and the old `isClosed`-gated form gone |
+
+**Still not visually confirmed:** the deferred-note row itself. No line is currently deferred
+(zero past-day open lines), and the sportsbook requires sign-in, so there is nothing to
+photograph. It will render naturally the first morning a sale is still pending at 07:30 ET —
+and the canary now announces exactly that in Slack, which is the more useful signal anyway.
