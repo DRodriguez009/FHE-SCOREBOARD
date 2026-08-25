@@ -1,85 +1,72 @@
 # Session Handoff — main
-Generated: 2026-08-25 16:05
+Generated: 2026-08-25 (evening)
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
-## What We Were Working On
-Reported bug: "the bets were not paid out to Tamayo — he won the matchup for Bryan." The
-Aug-24 line was never settled, not mis-paid. Fixed the payout, then fixed the cause: the
-auto-settler's pending-sales guard deferred the line with a bare `continue`, telling nobody.
-The session then widened into the migration-history drift and row-cap exposure across every
-FHE project.
+## State
+**Nothing in flight.** The lunch button shipped, deployed and was verified in production
+(`8618615`, `APP_VERSION=2026-08-25-lunch-nav-button-003`). Read the last `## Session` block
+in `.claude/sessions/main.md` before touching it — especially the brute-force cap and the
+isolation rule, both of which are load-bearing and neither of which is obvious from the code.
 
-## Remaining Work
-No TASKS.md in this repo — these come from TEST_LOG.md follow-ups.
+## The one open thread: Slack notification on lunch start
+The user asked for a Slack message telling an agent what time they went to lunch and when
+they are due back. **They are creating the Slack app themselves on 2026-08-26.**
 
-- **BLOCKED, needs an org owner: raise `max_rows` from 1000.** The Management API refuses
-  with "account does not have the necessary privileges" on BOTH FHE projects — Derrick is a
-  member, not an admin, since the org migration. Every caller aggregates server-side and the
-  scoreboard has a canary, but the cap is still armed on all ~12 projects. Nothing is
-  currently truncating (verified). Note this role limit blocks any project-config change.
-- **Needs a human call:** `fhe-coachings-tracker/supabase/migrations/` has TWO files on
-  version `20260706170000` — `init_coaching_schema.sql` and `init_coaching_schema.local.sql`
-  — both creating the same tables and inserting the same managers. Duplicate version
-  prefixes break `supabase db push` on their own. The `.local` variant looks like a dev copy
-  that shouldn't be there, but deleting a migration wasn't mine to do. The shared-DB backfill
-  inserted 53 rows for 54 files because of this.
-- **The deferred-note UI row has never rendered.** Needs an agent login AND a live deferred
-  line; neither existed. It'll appear naturally the first morning a sale is pending at
-  07:30 ET. The canary now posts it to Slack at 09:00, which is the better signal anyway.
-- Re-auth the **Supabase MCP** (`/mcp` → supabase → FHE org `ieuivsdynmfdncskrtdo`) so
-  `get_advisors` can run. Not blocking — the CLI and Management API both work.
-- Optional: rotate the scoreboard's `jwt_secret`. Reading `/v1/projects/<ref>/postgrest` to
-  check `max_rows` returns it in the response, so it's in this session's transcript on disk.
-- **Sibling repos have no truncation canary.** Only fhe-scoreboard does. `scripts/canary.mjs`
-  reads its Supabase URL and anon key out of `index.html`, so porting it to command-center or
-  goal-leaderboard is mostly a config change.
-- Known/accepted, unchanged: `list_admin_names()` is anon-callable (names are on a wall
-  board); `favicon.ico` 404s.
-- Cosmetic: the defer note says "settles as soon as they are approved" without mentioning the
-  2-day backstop, after which a line settles on whatever is approved.
+### What exists today (checked, do not re-derive)
+- `pg_net` is installed on `eawpwwctsifzcclrwvww`.
+- TWO incoming webhooks in `time_clock.policy_config`: `slack_points_webhook_url` and
+  `slack_sto_webhook_url`. **Incoming webhooks post to ONE channel and cannot DM anyone.**
+- **No Slack user-id column exists anywhere** — verified across the `time_clock` and `public`
+  schemas. There is nothing today that can address a message to an individual.
+- The working template to copy is `time_clock.tct_notify_slack_lunch_late` — an
+  `AFTER INSERT` trigger on `attendance_events` that builds text and fires
+  `net.http_post`, wrapped in `exception when others then return new` so Slack being down can
+  never roll back a punch. Keep that fire-and-forget discipline.
 
-## Key Decisions This Session
-- **Fix the cause, not just the symptom.** Notes + UI + Slack only make the wait legible;
-  calling the settler from both approval RPCs is what stops the recurrence. Shipped both.
-- **Ran the settler, not `admin_resettle_bet_line`.** The line was `open`, not mis-settled —
-  and the resettler stamps `[manual]`, permanently exempting a line from auto-correction.
-- **Test destructive DB changes with an atomic `DO` block ending in a deliberate `raise`.**
-  No staging copy exists. Everything rolls back — inserts, coin movements, even a throwaway
-  `sb_issue_session` token — while results still return in the error payload. Reusable.
-- **Verified object existence before declaring 54 migrations applied.** Falsely marking one
-  applied would hide a real gap. Parsed every `create function|table|trigger` and checked the
-  catalogs: zero missing.
-- **Return shape decides row-cap exposure, not table size.** `carrier_agent_states` is at 974
-  but reached via `carrier_detail`, which returns jsonb — a single row the cap can't truncate.
+### What the user needs to hand over
+A **bot token** (`xoxb-…`) from a Slack app with `chat:postMessage` and `im:write`.
+Not a webhook URL — a webhook cannot do this job.
+
+### Build order once the token exists
+1. Store the token in `policy_config` (`slack_bot_token`). It is a secret in a table that
+   several apps read — check who can select from `policy_config` before putting it there.
+2. Add `slack_user_id` to `time_clock.contractors`. Populate by calling Slack `users.list`
+   and matching on email; agent emails are `@firsthealthenroll.org`. Expect a few misses —
+   the code must no-op cleanly on a null id rather than erroring.
+3. Trigger on `clock_punches` where `punch_type='lunch_out'`, posting via
+   `net.http_post` to `https://slack.com/api/chat.postMessage` with
+   `Authorization: Bearer <token>`, `channel` = the agent's `slack_user_id`.
+   Message: start time and due-back time (`punched_at + lunch_minutes_allowed`).
+4. ⚠️ **`chat.postMessage` returns HTTP 200 even when it fails** (`{"ok":false,...}`).
+   A fire-and-forget `pg_net` call will look successful while delivering nothing. Verify a
+   real DM actually arrives — do not trust the status code.
+
+### Worth raising before building it
+The button already shows a live countdown and states the return time when tapped, so a DM at
+lunch *start* largely duplicates what the agent is already holding. **A DM at the 50-minute
+mark** — "10 minutes left" — is the version that would actually prevent a late-back. Suggest
+that trade before writing the start-time version.
+
+## Also still open (pre-existing)
+- Not yet exercised by a REAL agent through the login form — needs a live PIN. Watch the first
+  agent who signs in and confirm the button appears.
+- `max_rows` still 1000 org-wide; raising it needs an org owner (Derrick is member, not admin).
+- `/favicon.ico` 404.
 
 ## Kickstart Prompt
-> fhe-scoreboard, 2026-08-25. The "bets not paid out to Tamayo" bug is fixed and shipped:
-> the Aug-24 line `de9f3fc8` was never settled because the auto-settler's pending-sales
-> guard deferred it with a bare `continue` that told nobody. Tamayo was paid 1,588 (wallet
-> 3,500 → 5,088). `main` is clean at `ac0ddd2`, live APP_VERSION
-> `2026-08-25-deferred-line-reason-001`, canary green in CI.
+> Read the last `## Session` block in `.claude/sessions/main.md`. The scoreboard lunch button
+> is live and nothing is in flight.
 >
-> **The diagnostic trap to remember:** approval stamps `approved_at = created_at`, so a sale
-> that was pending when the settler ran later looks like it was approved on the match day.
-> A deferred line therefore looks like a settler failure with no evidence. It isn't — check
-> `settlement_note` on the open line first; since `20260825140000` it says so explicitly.
+> Today's job is the Slack lunch notification. The user was creating the Slack app on
+> 2026-08-26 — **ask for the `xoxb-` bot token before planning anything**, since a webhook
+> cannot DM and that is the whole blocker. Then follow the build order in the handoff.
 >
-> **DB access:** the Supabase MCP is still dead, but `npx supabase db query --linked "<sql>"
-> </dev/null` from this directory works as `postgres` with full DDL, and the Management API
-> works for other projects via the CLI keychain token
-> (`security find-generic-password -s "Supabase CLI" -w` → POST
-> `/v1/projects/<ref>/database/query`). Beware: `cd`-ing inside a Bash call persists, and
-> `--linked` resolves from the cwd — a stray `cd` gives a confusing "Cannot find project ref".
+> Before writing the trigger, raise the 50-minute-warning alternative: the button already
+> shows a countdown and the return time, so a start-time DM mostly repeats what the agent
+> already has.
 >
-> **To test anything destructive**, wrap it in a `do $$ ... raise exception 'ROLLBACK-BY-DESIGN\n...' end $$;`
-> block — atomic, so it all rolls back, and the results come back in the error message.
-> Verify residue afterwards anyway.
->
-> Two open items need the USER, not you: raising `max_rows` (blocked — member, not org
-> admin, on both Supabase projects) and deleting/renaming the duplicate-version
-> `fhe-coachings-tracker/supabase/migrations/20260706170000_init_coaching_schema.local.sql`.
->
-> If it's the morning: check whether Thomas Eustace ($110) and Bryan Sequeira ($80) got
-> approved. If not, their Aug-25 lines deferred — and the canary should have said so in
-> Slack at 09:00 ET. That's the first chance to actually see the new deferred-note row in
-> bet history, which has never been rendered on screen.
+> Shared prod Supabase `eawpwwctsifzcclrwvww`, no staging, no PITR. Use a `Zzz Smoke Test`
+> disposable contractor for anything mutating and delete it child-rows-first afterwards.
+> Management API READS work; WRITES to this project were refused by the auto-mode classifier
+> in the time-clock repo — DML went through fine from here today, but if DDL is refused, hand
+> it over with `pbcopy` for the SQL editor rather than reshaping the command.

@@ -882,3 +882,45 @@
   session's transcript on disk. Low urgency, but a rotation candidate if being strict.
 - Sibling repos have no truncation canary; only fhe-scoreboard does. The script reads its
   URL/anon key out of `index.html`, so porting it is mostly config.
+
+## Session — 2026-08-25 (evening) — Lunch punch in the scoreboard nav
+
+**Shipped and live.** `8618615`, `APP_VERSION=2026-08-25-lunch-nav-button-003`, production
+verified clean (zero console errors, board renders, button correctly hidden when logged out).
+
+A `🍔 Lunch` button in the top nav, between Sportsbook and Admin, punching the SAME clock as
+time-clock-tracking.vercel.app/contractor. Counts down while out (`· 47m left`), turns red at
+`· 12m OVER` once the allowance is spent. Confirms in both directions.
+
+### Why this needed no migrations
+`tct_lunch_punch(uuid,text,text)` and `tct_contractor_lunch_today(uuid,text,text)` were
+ALREADY granted to `anon`. The obstacle was never the grant — it was identity. Those functions
+are guarded by `tct_actor_is_self_or_admin`, which resolves a **time-clock** session token via
+`fhe_session_resolve` in project `eawpwwctsifzcclrwvww`. The scoreboard's own token is minted
+in `sralgaskfktcynpdxjhj` and means nothing there.
+
+So `agentLogin()` now does a **second, invisible login** against the time clock while the PIN
+is still in the form field, and stores that token under `fhe-scoreboard-tct-session`. Agent
+PINs match across both apps, so nobody sees it happen.
+
+### The three things that keep this safe
+- **Isolation.** Every time-clock call goes through `tctRpc()`, which resolves to
+  `{data,error}` and never throws. That project going down hides the button and touches
+  nothing else. This is the 2026-08-19 clock-in outage shape, deliberately avoided.
+- **Brute-force cap.** The second login feeds the time clock's failure counter. Capped at ONE
+  attempt per tab via `fhe-scoreboard-tct-skip`. If PINs ever diverge between the apps it
+  costs one failure, not eight — and degrades to a missing button, never a lockout.
+- **Exempt staff never see it.** `clock_in_exempt` gates lunch too. On the scoreboard that is
+  **Mark Caraher** only, today.
+
+### Verified end-to-end against the live DB
+Disposable `Zzz Smoke Test` contractor, created and deleted child-rows-first with its
+`auth_sessions` row revoked; all leftovers confirmed 0. Covered: anon reachability + CORS from
+a foreign origin, 42501 on a bogus token, 42501 on someone else's contractor id, all three
+punch outcomes, exempt hiding, dead-token degradation, and every label state in a real browser.
+Full table in TEST_LOG.md.
+
+### Where left off
+Feature is DONE and live. Nothing in flight. The open thread is the Slack notification —
+see the handoff, which carries the exact steps. **The user is creating the Slack app on
+2026-08-26**; everything after that is mine to build.
