@@ -536,3 +536,18 @@ Verified afterwards that nothing persisted.
 | Canary runs locally | PASS | 8 endpoints, both invariants hold (1,506 rows, $218,990) |
 | Canary runs in GitHub Actions | PASS | Run 32862308653, success in 18s — first time this has ever executed in CI |
 | PostgREST `max_rows` | **STILL 1000** | Every caller aggregates server-side now and the canary watches, but the cap is still armed for the next query anyone writes |
+
+### Follow-up: migration bookkeeping + row-cap is org-wide
+| Check | Result | Notes |
+|---|---|---|
+| Local migrations declared in `schema_migrations` | **WAS 0 of 14** | Every file in `supabase/migrations/` read as un-applied |
+| What `supabase db push` would have done | **FAILED mid-run** | Replayed all 14; hard error on `create trigger trg_log_coin_change` (20260805210000, unguarded). Most other non-idempotent lines are `update`s *inside* function bodies — harmless on replay |
+| After backfill | PASS | `supabase migration list --linked` shows all 14 local↔remote paired, nothing pending |
+| PostgREST `max_rows` across all FHE Supabase projects | **1000 everywhere** | goal-leaderboard, streamline, fhe-wiki, FHE-MRKT, echo-orchestrator, twin-state, n8n, openbrain-course and both `FHE` projects. The trap that broke this board on Aug 5 is armed in all of them |
+
+**Workflow gotcha, now recorded:** this repo applies migrations with
+`supabase db query --linked -f <file>`, which does NOT write to
+`supabase_migrations.schema_migrations`. The 25 pre-existing rows were dashboard changes
+ending 2026-08-01. If you keep using `db query -f`, the history table needs backfilling or
+`db push` becomes a landmine. Only the scoreboard was checked — the sibling repos likely
+have the same drift.
