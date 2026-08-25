@@ -1421,10 +1421,14 @@ async function loadMyBets(){
     const statusColor=b.status==='won'?'badge-approved':b.status==='lost'?'badge-rejected':'badge-pending';
     const payoutTxt=b.status==='won'?`+${Number(b.payout).toLocaleString()} coins`:b.status==='lost'?`-${Number(b.amount).toLocaleString()} coins`:`${b.amount} coins wagered`;
     const when=b.created_at?new Date(b.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
+    // A pending bet on a line the settler deferred: say why, rather than showing a bare
+    // PENDING badge for hours. See 20260825140000.
+    const heldNote=(b.status==='pending'&&b.line_status==='open'&&b.line_note)?b.line_note:'';
     return`<div class="entry-row flex-between">
       <div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700">${esc(betLineLabel(b))}</div>
         <div style="font-size:11px;color:var(--muted)">Picked: <b style="color:#cfd8cf">${esc(betSideLabel(b))}</b> · ${payoutTxt}${when?' · '+esc(when):''}</div>
+        ${heldNote?`<div style="font-size:11px;color:var(--orange);margin-top:3px">⏳ ${esc(heldNote)}</div>`:''}
       </div>
       <span class="badge ${statusColor}">${b.status}</span>
     </div>`;
@@ -1484,7 +1488,7 @@ async function loadManagerLines(){
         <span class="badge ${isOpen?'badge-pending':isSettled?'badge-approved':'badge-rejected'}">${line.status}</span>
       </div>
       ${isSettled?`<div style="font-size:12px;color:var(--muted)">Winner: ${esc(line.winning_side)} ${line.settlement_note?'· '+esc(line.settlement_note):''}</div>`:''}
-      ${!isSettled&&isClosed&&line.settlement_note?`<div style="font-size:12px;color:var(--muted)">${esc(line.settlement_note)}</div>`:''}
+      ${!isSettled&&line.settlement_note?`<div style="font-size:12px;color:var(--muted)">${esc(line.settlement_note)}</div>`:''}
       ${isOpen?`<div class="flex" style="gap:6px;flex-wrap:wrap">${settleButtons}</div>`:''}
       ${isClosed?`<div class="flex" style="gap:6px;flex-wrap:wrap;margin-top:6px">${fixButtons}</div>`:''}
     </div>`;
@@ -1899,7 +1903,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_c
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-08-05-eastern-time-days-004';
+const APP_VERSION='2026-08-25-deferred-line-reason-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;

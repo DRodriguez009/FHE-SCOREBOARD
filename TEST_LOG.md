@@ -478,3 +478,49 @@ linter for the auth changes.
   `search_path`, confirmed in the applied migration text, but not independently linted.
 - Performance advisors (indexes etc.) — not security, not urgent.
 - Re-run `get_advisors` once the Supabase MCP grant is re-authorized against the FHE org.
+
+## Session — 2026-08-25
+
+### Feature Under Test: deferred sportsbook lines explain themselves + settle on approval
+### Result: PASS
+
+**The incident.** The Aug-24 line "Gabriel T. vs Bryan" sat `open` while all seven other
+Aug-24 lines settled at 07:30 ET. Gabriel Tamayo had 794 coins on himself and won the day
+745 vs 555, but his bet showed a bare PENDING badge — no reason, no payout.
+
+Cause: the pending-sales guard from `20260817150000` is correct, but it was a bare
+`continue`. Nothing was written to the line, nobody was told, and the only retry was the
+next cron tick (up to 9h later). It was also close to undiagnosable after the fact —
+approval stamps `approved_at = created_at`, so the sale that was pending at 07:30 now
+looks like it was approved on Aug 24 with the other six.
+
+| Test | Result | Notes |
+|---|---|---|
+| Dry-run: scope of a settler pass over the last 3 days | PASS | Exactly 1 line would change; phase 2 would correct nothing else |
+| Rewrite of `auto_settle_daily_matchups` is drift-free | PASS | Diffed new body vs live `prosrc` — only the 11 added lines differ |
+| Migration applies | PASS | All 4 functions replaced; ACLs verified post-`drop`/`create` |
+| `get_my_bets` keeps anon/authenticated EXECUTE after drop+create | PASS | Re-granted explicitly; verified in `proacl` |
+| `auto_settle_daily_matchups` still NOT anon-reachable | PASS | `postgres=X \| service_role=X` only |
+| Tamayo paid out | PASS | Bet `won`, payout 1,588, wallet 3,500 → 5,088 |
+| Payout carries an audit reason | PASS | `coin_ledger` row has reason + actor (was null on every historical row) |
+| Defer branch writes a reason | PASS | "Awaiting sale approvals: 1 sale still pending for Aug 24 — settles as soon as they are approved"; line stayed `open`, bet stayed `pending` |
+| Approving the last pending sale settles immediately | PASS | open → `settled` in the same call; totals 995 vs 555; bet `won`, payout 200 |
+| Test harness left no residue | PASS | 0 test lines, 0 test sessions, wallet unchanged at 5,088 |
+
+Both behavioural tests ran as atomic `DO` blocks ending in a deliberate `raise`, so the
+test line, the throwaway admin session and the coin movements all rolled back together.
+Verified afterwards that nothing persisted.
+
+**Also closed:** commission approvals now set `app.coin_reason` / `app.coin_actor`, so the
++10 award stops landing in `coin_ledger` with a null reason — an open item since
+`20260805210000`.
+
+### Blockers / follow-ups:
+- [ ] **Not verified in a browser.** The two UI changes (reason under a pending bet; admin
+      line card showing the note for `open` lines) are untested visually. Reproducing a
+      deferred line in the UI needs a real pending sale on a past day.
+- [ ] No alert when a line defers. The Slack webhook exists but rides the canary workflow,
+      which still cannot be pushed (gh token lacks `workflow` scope).
+- [ ] Deferral is still capped at 2 days, after which a line settles on whatever is
+      approved. That is deliberate, but it is now silent in a second way: the note says
+      "settles as soon as they are approved" without mentioning the backstop.
