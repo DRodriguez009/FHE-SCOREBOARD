@@ -524,3 +524,15 @@ Verified afterwards that nothing persisted.
 - [ ] Deferral is still capped at 2 days, after which a line settles on whatever is
       approved. That is deliberate, but it is now silent in a second way: the note says
       "settles as soon as they are approved" without mentioning the backstop.
+
+### Follow-up same session: internal-helper revokes + canary scheduled
+| Test | Result | Notes |
+|---|---|---|
+| Anon-reachable surface audited (43 SECURITY DEFINER fns) | PASS | Only `log_coin_change` + `assert_admin` violated the convention; the rest are credential-taking or intentionally-public reads |
+| `credit_wallet` still revoked (2026-08-17 hole) | PASS | `postgres \| service_role` only |
+| `verify_bettor` is not a PIN brute-force oracle | PASS | Resolves 256-bit session tokens via `sb_resolve_session`, not PINs |
+| Revoke `assert_admin` / `log_coin_change` from public+anon+authenticated | PASS | Both now `postgres \| service_role` only |
+| Regression after revoke: approval + coin trigger | PASS | Commission approved, coins 5,088 → 5,098, ledger row written with the new `commission approved (+10)` reason |
+| Canary runs locally | PASS | 8 endpoints, both invariants hold (1,506 rows, $218,990) |
+| Canary runs in GitHub Actions | PASS | Run 32862308653, success in 18s — first time this has ever executed in CI |
+| PostgREST `max_rows` | **STILL 1000** | Every caller aggregates server-side now and the canary watches, but the cap is still armed for the next query anyone writes |
