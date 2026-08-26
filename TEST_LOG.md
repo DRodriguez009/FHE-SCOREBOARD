@@ -645,11 +645,33 @@ backdated 71 minutes into a lunch. Both removed afterward, child-rows-first.
 | Panel cannot delay the admin load | PASS | `loadAdminLunch()` is fired, not awaited, inside `loadAdmin()` |
 | Production after deploy | PASS | `APP_VERSION=2026-08-26-admin-lunch-panel-001`, card + all four bridge fns present, no console errors |
 
+### Credential-parity audit (2026-08-26) — both unknowns now CLOSED
+Every person's PIN from the master sheet was replayed against **both** apps' login RPCs, and for
+admins the resulting time-clock token was pushed through `tct_admin_open_lunches` to prove it
+passes `tct_actor_is_admin`. All 49 sessions minted by the audit were revoked. No PIN was written
+to disk or to any commit.
+
+**Agents — 17 of 17 non-exempt will see the lunch button. Zero broken.**
+PINs are identical across both apps for every agent on the scoreboard. Mark Caraher is exempt
+(n/a by design).
+
+**Admins — 5 of 7 get the live card**, exactly as predicted:
+
+| Admin | Scoreboard | Time clock | Admin guard | Card shows |
+|---|---|---|---|---|
+| Derrick Rodriguez | ok | ok | ok | lunches |
+| Jordan Kyles | ok | ok | ok | lunches |
+| Joshua Diaz | ok | ok | ok | lunches |
+| Michael Sanguily | ok | ok | ok | lunches |
+| Yamill Julian | ok | ok | ok | lunches |
+| Mark Caraher | ok | ok | **FAIL** | link to Time Clock — signs in, but is not a time-clock admin |
+| Michael Bregio | ok | **FAIL** | FAIL | link to Time Clock — no time-clock account at all |
+
 ### Blockers / Follow-ups:
-- [ ] **Unknown until a real admin signs in:** whether a scoreboard password equals that person's
-      time-clock PIN. If yes the card fills in silently; if not they get the link version. Not
-      testable without a real credential.
-- [ ] **Mark Caraher and Michael Bregio are not time-clock admins**, so they will always get the
-      link version regardless of credentials. By design, but worth telling them once.
-- [ ] Still nobody has punched a lunch in production — the agent button, the Slack DMs and this
-      panel have all been verified with disposable data only.
+- [x] ~~Unknown whether scoreboard passwords match time-clock PINs~~ — audited, they all match.
+- [x] ~~Mark Caraher / Michael Bregio get the link version~~ — confirmed empirically, not assumed.
+- [ ] Still nobody has punched a lunch in production. Every piece is verified, but only with
+      disposable data plus this credential audit. The first real lunch remains the live test.
+- [ ] Parity is a snapshot, not a guarantee. Rotating a PIN in one app and not the other silently
+      removes that person's lunch button — see [[project_pin_rotation_handoff_gap]] for the last
+      time a one-sided rotation caused exactly this class of problem.
