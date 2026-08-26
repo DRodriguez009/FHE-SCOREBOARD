@@ -924,3 +924,30 @@ Full table in TEST_LOG.md.
 Feature is DONE and live. Nothing in flight. The open thread is the Slack notification —
 see the handoff, which carries the exact steps. **The user is creating the Slack app on
 2026-08-26**; everything after that is mine to build.
+
+## Session — 2026-08-26 — Admin lunch panel + Slack DMs
+
+Live: `9464bce` (`APP_VERSION=2026-08-26-admin-lunch-panel-001`), verified in production.
+
+A `🍔 Currently On Lunch` card in the Admin panel, above the inner tabs. Same cross-project
+bridge as the agent lunch button, but the *admin password* is replayed against the time clock at
+sign-in, because `tct_admin_open_lunches` needs a time-clock **admin** token.
+
+**It fails more often than the agent bridge, by the shape of the data.** Only 5 of the 7
+scoreboard admins are also time-clock admins — **Mark Caraher and Michael Bregio are not** — and
+the two apps' credentials were never formally unified. So the card has three states and **never
+renders blank**: lists lunches / "Nobody is on lunch right now." / "your sign-in does not unlock
+the time clock" + a link. Yesterday's exempt-button lesson, applied before it could be reported.
+
+`loadAdminLunch()` is fired and **not awaited** inside `loadAdmin()` — a dead time-clock project
+must not delay the commissions load.
+
+Also shipped elsewhere today: Slack lunch DMs (fhe-command-center `31a0eeb`) and the same
+hide-when-empty fix in the time clock's own admin panel (time-clock-tracking `44ef10b`).
+
+### Where left off
+Nothing in flight. Two unknowns that need a human, not code:
+- Whether a real admin's scoreboard password equals their time-clock PIN. If yes the card fills
+  in silently; if no they get the link version. Not testable without a real credential.
+- **Nobody has punched a lunch in production yet** — button, DMs and both panels have only been
+  exercised with disposable `Zzz Smoke` data.
