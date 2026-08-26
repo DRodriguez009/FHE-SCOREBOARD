@@ -632,6 +632,14 @@ select option{background:#020802}
       </div>
     </div>
 
+    <!-- CURRENTLY ON LUNCH (2026-08-26). Mirrors the time clock's admin panel so lunch can be
+         watched from whichever app is already open. Always rendered once the bridge is up --
+         an absent panel makes "nobody is on lunch" look like a broken feature. -->
+    <div class="card" style="margin-bottom:1rem" id="admin-lunch-card">
+      <div class="card-title">🍔 Currently On Lunch</div>
+      <div id="admin-lunch-body"><div class="empty"><span class="spinner"></span> Loading...</div></div>
+    </div>
+
     <div class="inner-nav">
       <button class="itab active" id="it-pending" onclick="adminTab('pending')">Pending <span class="pcnt-pill" id="pcnt">0</span></button>
       <button class="itab" id="it-addcomm" onclick="adminTab('addcomm')">Add Commission</button>
@@ -1283,6 +1291,104 @@ async function lunchClick(){
   await refreshLunchNav();
 }
 
+// ══════════════════ ADMIN LUNCH PANEL ══════════════════
+// The same cross-project bridge as the agent lunch button, for the admin read. tct_admin_open_
+// lunches needs a TIME-CLOCK ADMIN token, which the scoreboard's admin token cannot satisfy --
+// different project, different credential store. So the scoreboard password is replayed once
+// against the time clock's login RPC at sign-in, exactly as on the agent side.
+//
+// This bridge fails more often than the agent one, by design of the data rather than the code:
+// only 5 of the 7 scoreboard admins are also time-clock admins (Mark Caraher and Michael Bregio
+// are not), and the two apps' credentials are not formally unified. So the panel ALWAYS says
+// which case it is in -- never a blank card -- and offers the time clock as the way through.
+const TCT_ADMIN_SESSION_KEY='fhe-scoreboard-tct-admin-session';
+const TCT_ADMIN_SKIP_KEY='fhe-scoreboard-tct-admin-skip';
+let tctAdmin=null, adminLunchTimer=null;
+
+async function tctAdminLogin(name,pass){
+  if(sessionStorage.getItem(TCT_ADMIN_SKIP_KEY))return;
+  const{data,error}=await tctRpc('tct_contractor_login_token',{p_contractor_name:name,p_pin:pass});
+  const row=Array.isArray(data)?data[0]:data;
+  if(error||!row||!row.token){
+    // Not a time-clock admin, or the credentials differ between the apps. One attempt per tab --
+    // the time clock throttles logins and a retry loop here could lock a manager out of it.
+    sessionStorage.setItem(TCT_ADMIN_SKIP_KEY,'1');
+    return;
+  }
+  tctAdmin={id:row.id,name:row.contractor_name,token:row.token};
+  sessionStorage.setItem(TCT_ADMIN_SESSION_KEY,JSON.stringify(tctAdmin));
+}
+
+function restoreTctAdminSession(){
+  const stored=sessionStorage.getItem(TCT_ADMIN_SESSION_KEY);
+  if(!stored)return;
+  try{const s=JSON.parse(stored);if(s&&s.name&&s.token)tctAdmin=s;}
+  catch(e){sessionStorage.removeItem(TCT_ADMIN_SESSION_KEY);}
+}
+
+async function tctAdminLogout(){
+  const tok=tctAdmin&&tctAdmin.token;
+  tctAdmin=null;
+  sessionStorage.removeItem(TCT_ADMIN_SESSION_KEY);
+  sessionStorage.removeItem(TCT_ADMIN_SKIP_KEY);
+  stopAdminLunchTimer();
+  if(tok)await tctRpc('fhe_session_revoke',{p_token:tok});
+}
+
+function stopAdminLunchTimer(){if(adminLunchTimer){clearInterval(adminLunchTimer);adminLunchTimer=null;}}
+
+const TIME_CLOCK_ADMIN_URL='https://fhe-command-center.vercel.app/timeclock/admin';
+
+async function loadAdminLunch(){
+  const el=document.getElementById('admin-lunch-body');
+  if(!el)return;
+  if(!tctAdmin){
+    el.innerHTML='<div style="font-size:12px;color:var(--muted)">Your scoreboard sign-in does not '
+      +'unlock the time clock, so lunches cannot be read here. Open the time clock directly: '
+      +`<a href="${TIME_CLOCK_ADMIN_URL}" style="color:var(--orange)">Time Clock → Admin</a>.</div>`;
+    stopAdminLunchTimer();
+    return;
+  }
+  const{data,error}=await tctRpc('tct_admin_open_lunches',
+    {p_actor_name:tctAdmin.name,p_actor_pin:tctAdmin.token});
+  if(error){
+    // A dead token means the bridge is gone, not that the scoreboard is broken.
+    if(String(error.code||'')==='42501'){
+      tctAdmin=null;sessionStorage.removeItem(TCT_ADMIN_SESSION_KEY);
+      return loadAdminLunch();
+    }
+    el.innerHTML='<div style="font-size:12px;color:var(--muted)">Could not reach the time clock. '
+      +`<a href="${TIME_CLOCK_ADMIN_URL}" style="color:var(--orange)">Open it directly</a>.</div>`;
+    stopAdminLunchTimer();
+    return;
+  }
+  const rows=Array.isArray(data)?data:[];
+  if(!rows.length){
+    // Said explicitly, for the same reason the time clock's panel now says it.
+    el.innerHTML='<div style="font-size:13px;color:var(--muted)">Nobody is on lunch right now.</div>';
+  }else{
+    el.innerHTML='<div class="entry-list">'+rows.map(r=>{
+      const over=r.over_allowance;
+      return '<div class="entry-row flex-between">'
+        +`<div class="flex"><div class="avatar">${esc(initials(r.contractor_name))}</div><div>`
+        +`<div style="font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;text-transform:uppercase">${esc(r.contractor_name)}</div>`
+        +`<div style="font-size:11px;color:var(--muted)">${esc(r.team||'')} · started ${etTime(r.started_at)}</div>`
+        +'</div></div>'
+        +`<div style="text-align:right"><div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;color:${over?'#f07070':'var(--text)'}">${r.minutes_elapsed} min</div>`
+        +`<div style="font-size:11px;color:var(--muted)">${over?('over '+r.minutes_allowed):('of '+r.minutes_allowed)}</div></div>`
+        +'</div>';
+    }).join('')+'</div>'
+      +'<div style="font-size:11px;color:var(--muted);margin-top:.6rem">Still open at end of day means '
+      +'the agent never punched back. No points are assessed automatically.</div>';
+  }
+  // Elapsed minutes go stale fast, so refresh while an admin is actually looking at the tab.
+  stopAdminLunchTimer();
+  adminLunchTimer=setInterval(()=>{
+    if(document.getElementById('page-admin').classList.contains('active'))loadAdminLunch();
+    else stopAdminLunchTimer();
+  },60000);
+}
+
 // ── DAILY MOTIVATION ──
 // In-code quote bank. One quote + greeting shown per day, rotated deterministically
 // by day-of-year so every agent sees the same message and it changes at midnight.
@@ -1810,6 +1916,9 @@ async function adminLogin(){
     // Only the server-issued token is retained — the password is never stored or re-sent.
     currentAdmin={username:found.username,token:found.token,name:found.name};adminAuthed=true;
     sessionStorage.setItem(ADMIN_SESSION_KEY,JSON.stringify({token:found.token}));
+    // Only moment the password is in hand. Best-effort; a failure just means the lunch card
+    // explains itself instead of listing lunches. See ADMIN LUNCH PANEL.
+    await tctAdminLogin(found.name,pass);
     document.getElementById('admin-login-section').style.display='none';
     document.getElementById('admin-panel-section').style.display='block';
     document.getElementById('admin-panel-title').textContent=found.name==='Admin'?'Admin Panel':found.name+" — Admin Panel";
@@ -1834,6 +1943,7 @@ async function revokeStoredSession(storageKey,fallbackToken){
 
 async function adminLogout(){
   await revokeStoredSession(ADMIN_SESSION_KEY,currentAdmin&&currentAdmin.token);
+  await tctAdminLogout();
   currentAdmin=null;adminAuthed=false;selectedMgrUsername=null;
   sessionStorage.removeItem(ADMIN_SESSION_KEY);
   document.getElementById('admin-login-section').style.display='block';
@@ -1856,6 +1966,8 @@ async function restoreAdminSession(){
   if(!who||who.principal!=='admin'){sessionStorage.removeItem(ADMIN_SESSION_KEY);return;}
   const found={username:who.identity,name:who.display_name};
   currentAdmin={username:found.username,token:creds.token,name:found.name};adminAuthed=true;
+  // Token-only, same as above — the password is never replayed on a reload.
+  restoreTctAdminSession();
   document.getElementById('admin-login-section').style.display='none';
   document.getElementById('admin-panel-section').style.display='block';
   document.getElementById('admin-panel-title').textContent=found.name==='Admin'?'Admin Panel':found.name+" — Admin Panel";
@@ -1869,6 +1981,9 @@ function adminTab(tab){
 }
 
 async function loadAdmin(){
+  // Fire-and-forget so a slow or dead time-clock project cannot delay the commissions load
+  // below. The lunch card renders its own state, including its own failures.
+  loadAdminLunch();
   const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'created_at.desc,id.asc');
   const approved=comms.filter(c=>c.status==='approved');
   const todayStart=startOfToday(),weekStart=startOfWeek();
@@ -2151,7 +2266,7 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_c
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-08-25-lunch-nav-button-004';
+const APP_VERSION='2026-08-26-admin-lunch-panel-001';
 let updateOverlayShown=false;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
