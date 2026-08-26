@@ -618,3 +618,38 @@ child-rows-first; `auth_sessions` row revoked). All leftovers confirmed 0.
       databases with the same PIN, driven through `agentLogin()`, both deleted after). One PIN,
       two logins, 64-char time-clock token minted, button rendered. This closes the "not yet
       exercised by a real agent" follow-up.
+
+---
+
+## Session 2026-08-26 — "Currently On Lunch" in the scoreboard admin panel
+
+### Feature Under Test: `#admin-lunch-card`, fed by `tct_admin_open_lunches` across projects
+### Result: PASS
+
+Same cross-project bridge as the agent lunch button, but for an admin read. The scoreboard
+password is replayed once against the time clock's login RPC at sign-in; one attempt per tab
+(`fhe-scoreboard-tct-admin-skip`), because the time clock throttles logins and a retry loop
+could lock a manager out of the real clock.
+
+Verified with a disposable time-clock admin (`Zzz Smoke Admin`, is_admin) plus an agent
+backdated 71 minutes into a lunch. Both removed afterward, child-rows-first.
+
+| Test | Result | Notes |
+|---|---|---|
+| Bridge mints a time-clock admin token | PASS | 64-hex from `tct_contractor_login_token` |
+| Populated card | PASS | "ZZZ SMOKE ONLUNCH · Derrick Team · started 8:58 AM · **71 min** / over 60", red |
+| Empty state | PASS | "Nobody is on lunch right now." — card still rendered, not hidden |
+| No bridge (not a time-clock admin, or divergent credentials) | PASS | Explains itself + links to Time Clock → Admin. Never blank |
+| Dead time-clock token | PASS | Falls back to the no-bridge message; **scoreboard admin stays signed in** |
+| Recovery after the token returns | PASS | Card repopulates without a reload |
+| Panel cannot delay the admin load | PASS | `loadAdminLunch()` is fired, not awaited, inside `loadAdmin()` |
+| Production after deploy | PASS | `APP_VERSION=2026-08-26-admin-lunch-panel-001`, card + all four bridge fns present, no console errors |
+
+### Blockers / Follow-ups:
+- [ ] **Unknown until a real admin signs in:** whether a scoreboard password equals that person's
+      time-clock PIN. If yes the card fills in silently; if not they get the link version. Not
+      testable without a real credential.
+- [ ] **Mark Caraher and Michael Bregio are not time-clock admins**, so they will always get the
+      link version regardless of credentials. By design, but worth telling them once.
+- [ ] Still nobody has punched a lunch in production — the agent button, the Slack DMs and this
+      panel have all been verified with disposable data only.
