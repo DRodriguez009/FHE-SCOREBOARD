@@ -25,10 +25,18 @@ not obvious from the code.
   reports this week were both just a component hiding itself when it had nothing to show.
 - A dead time-clock token must never sign the user out of the scoreboard. Verified for both.
 
+## Credential parity — audited 2026-08-26, do not re-derive
+Every PIN from the master sheet was replayed against both apps' login RPCs (and admins' tokens
+pushed through `tct_admin_open_lunches`). Result: **agents 17/17 will see the button, zero
+broken.** **Admins: 5 of 7 get the live card** — Derrick, Jordan Kyles, Joshua Diaz, Michael
+Sanguily, Yamill Julian. Mark Caraher signs in but is not a time-clock admin; Michael Bregio has
+no time-clock account. Both correctly get the link version. Full table in TEST_LOG.md.
+
+⚠️ **This is a snapshot, not a guarantee.** Rotating a PIN in one app and not the other silently
+removes that person's lunch button — no error, just an absent control. See
+`project_pin_rotation_handoff_gap` in memory for the last time a one-sided rotation did this.
+
 ## Open items
-- Whether admin passwords here match time-clock PINs — unknown until a real admin signs in.
-- Mark Caraher and Michael Bregio are not time-clock admins, so they always get the link
-  version of the admin card. By design; worth telling them once.
 - Nobody has punched a real lunch yet. Watch the first one.
 - Pre-existing: `max_rows` 1000 (needs an org owner to raise), `/favicon.ico` 404, real PINs in
   this repo's git history — never blanket `git add -A` without checking.
