@@ -715,6 +715,36 @@ edges briefly disagree (observed 8/26 — back-to-back fetches of the same URL r
 content), so a tab already on the new build could be told to refresh again.
 
 ### Blockers / Follow-ups:
-- [ ] `setInterval` on the admin pending-count refetches **all** commissions every 60s just to
-      count pending rows. Same class of waste as this fix but needs a count RPC (DB change), so
-      it was left out rather than bundled unasked.
+- [x] ~~Admin pending-count refetches all commissions every 60s~~ — fixed in `4e49ad5`, below.
+
+---
+
+## Session 2026-08-27 — Pending badge counts in Postgres
+
+### Feature Under Test: `get_pending_count_admin(text, text)` + the 60s badge poll
+### Result: PASS — measured in production
+
+The badge polled `get_all_commissions_admin` once a minute (SETOF commissions, every row and
+column, paged by `rpcAll`) and counted `status='pending'` in JavaScript. The answer is one integer.
+
+| | Before | After |
+|---|---|---|
+| Per poll | 273,926 bytes | **1 byte** |
+| Per admin tab, 8h | 125.4 MB | **0.5 KB** |
+
+| Test | Result | Notes |
+|---|---|---|
+| Wrong credential refused | PASS | `P0001 invalid admin credentials` via `assert_admin` |
+| No unguarded variant | PASS | 0-arg call → `PGRST202`, not found |
+| Count matches the old client-side filter | PASS | Both 0 |
+| Badge hides at 0, shows at non-zero | PASS | Exercised both against the live DB |
+| Failed call leaves the badge alone | PASS | Pointed the call at bad credentials; the existing value survived rather than flashing a wrong 0 |
+| `loadAdmin()` still gets full rows | PASS | It needs them for the today/week/total money stats — only the poll was changed |
+| Production after deploy | PASS | `pending-count-rpc-001`, no console errors |
+
+Test admin sessions from this audit were revoked (`sb_end_session`).
+
+### Blockers / Follow-ups:
+- [ ] Nothing outstanding on efficiency. The two polls that dominated idle traffic (update check,
+      pending badge) both now cost effectively nothing. `loadBoard` every 30s on the TV is the
+      remaining periodic cost and it is doing real work — it renders the board.
