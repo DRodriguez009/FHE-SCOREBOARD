@@ -1,62 +1,56 @@
 # Session Handoff — main
-Generated: 2026-08-26
+Generated: 2026-08-27 10:15
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
-## State
-**Nothing in flight.** Live at `APP_VERSION=2026-08-26-admin-lunch-panel-001`, verified in
-production (card present, all four bridge functions defined, no console errors).
+## What We Were Working On
+Lunch tracking across the scoreboard and time clock (finished, live, exercised by real agents),
+then the idle-traffic efficiency pass on this app's two polling loops. **Nothing is in flight.**
+`APP_VERSION=2026-08-27-pending-count-rpc-001`, verified in production, no console errors.
 
-Two lunch features live in this file, both riding a bridge to a DIFFERENT Supabase project
-(`eawpwwctsifzcclrwvww`, not this app's `sralgaskfktcynpdxjhj`):
-- **Agent:** `🍔 Lunch` in the top nav → counts down → `Back from Lunch · 47m left` → red
-  `12m OVER`. Dimmed `Lunch · Not Required` for `clock_in_exempt` staff (Mark Caraher only).
-- **Admin:** `🍔 Currently On Lunch` card in the Admin panel.
+## Remaining Work
+No TASKS.md in this repo. Nothing outstanding in code. Everything left is blocked on a human:
+- Rotate the Slack bot token (passed through a chat transcript). Needs the Slack admin UI.
+- Decide whether lunch gets its own point tiers. It currently borrows `late_tier1..4_points`, so
+  60+ minutes over costs 5 points — the same as being an hour late for a shift. **All three of
+  8/26's lunch penalties were waived by hand**, which is the signal to watch: if it repeats, split
+  the keys.
+- PITR is disabled on `eawpwwctsifzcclrwvww`. Paid, and Derrick is a *member* not an admin on
+  that Supabase org since the migration — same blocker as raising `max_rows` from 1000.
+- Pre-existing here: `/favicon.ico` 404; real PINs live in this repo's git history, so never
+  blanket `git add -A` without looking.
 
-Read the last `## Session` block in `.claude/sessions/main.md` — the bridge's failure modes are
-not obvious from the code.
-
-## Rules for touching the bridge
-- **Every** time-clock call goes through `tctRpc()`, which resolves to `{data,error}` and never
-  throws. Do not fold these into this app's own error paths — that is the 2026-08-19 clock-in
-  outage shape, and this app must survive the other project being down.
-- **One login attempt per tab** (`fhe-scoreboard-tct-skip`, `fhe-scoreboard-tct-admin-skip`).
-  The time clock throttles logins; a retry loop could lock a real person out of the real clock.
-- **Never render blank.** Both features have explicit copy for every state. Two "it's broken"
-  reports this week were both just a component hiding itself when it had nothing to show.
-- A dead time-clock token must never sign the user out of the scoreboard. Verified for both.
-
-## Credential parity — audited 2026-08-26, do not re-derive
-Every PIN from the master sheet was replayed against both apps' login RPCs (and admins' tokens
-pushed through `tct_admin_open_lunches`). Result: **agents 17/17 will see the button, zero
-broken.** **Admins: 5 of 7 get the live card** — Derrick, Jordan Kyles, Joshua Diaz, Michael
-Sanguily, Yamill Julian. Mark Caraher signs in but is not a time-clock admin; Michael Bregio has
-no time-clock account. Both correctly get the link version. Full table in TEST_LOG.md.
-
-⚠️ **This is a snapshot, not a guarantee.** Rotating a PIN in one app and not the other silently
-removes that person's lunch button — no error, just an absent control. See
-`project_pin_rotation_handoff_gap` in memory for the last time a one-sided rotation did this.
-
-## Efficiency — done, don't redo
-Both polls that dominated idle traffic were fixed 2026-08-27 and measured in production: the
-update check `Range`-fetches 2KB instead of 143KB (`9dc615d`), and the pending badge counts in
-Postgres instead of shipping every commission (`4e49ad5`). `loadBoard`'s 30s refresh is the
-remaining periodic cost and it is doing real work. ⚠️ `APP_VERSION` now lives in `<head>` and
-must stay a single declaration — a second `const` in the same scope blanks the app.
-
-## Open items
-- Nobody has punched a real lunch yet. Watch the first one.
-- Pre-existing: `max_rows` 1000 (needs an org owner to raise), `/favicon.ico` 404, real PINs in
-  this repo's git history — never blanket `git add -A` without checking.
+## Key Decisions This Session
+- **Both idle-traffic patterns are scoreboard-only — audited, don't go hunting.** All five sibling
+  apps have zero `APP_VERSION` overlays and zero row-counting timers. This is the only
+  single-file `index.html` app, so the only one hand-rolling deploy-version detection.
+- The update overlay now needs the same new version on **two consecutive polls** before it shows.
+  Vercel's edges disagree during propagation, so one sighting is noise.
+- `APP_VERSION` is declared **once**, in `<head>` at byte 472, so the poll can `Range`-fetch 2KB.
+  A second `const` in the same global scope is a SyntaxError that blanks the entire app.
+- `get_pending_count_admin` counts in Postgres; `loadAdmin()` still fetches full rows because the
+  money stats need them.
 
 ## Kickstart Prompt
-> Read the last `## Session` block in `.claude/sessions/main.md`. Both lunch features are live
-> and nothing is in flight.
+> Read the last two `## Session` blocks in `.claude/sessions/main.md`. Nothing is in flight —
+> lunch tracking and the efficiency pass are both done, live, and measured.
 >
-> If the user says a lunch control is missing, check in this order before suspecting a bug:
-> is there a scoreboard session AND a time-clock bridge session; is the person
-> `clock_in_exempt`; are their PINs the same in both apps. A mismatch degrades to a missing
-> control, never an error — that is intentional, and it is also the most likely cause.
+> Before changing anything in `index.html`: it is one ~143KB file. Edit with python string
+> replacements that assert a match count of 1, then syntax-check by extracting the inline
+> `<script>` blocks and running `node --check` on each. **Bump `APP_VERSION` in `<head>` on every
+> ship** or open tabs never see the change — and batch related changes into ONE deploy, because
+> each bump interrupts the whole floor with a full-screen overlay (5 bumps in 24h on 8/25-26 was
+> the mistake that prompted the two-strike fix).
 >
-> This app is one 120k+ line `index.html`. Edits are python string replacements with an
-> asserted match count; syntax-check by extracting the inline `<script>` and running
-> `node --check`. Bump `APP_VERSION` on every ship or open tabs never see the change.
+> If the user reports a missing lunch control, check in this order before suspecting a bug: is
+> there a scoreboard session AND a time-clock bridge session; is the person `clock_in_exempt`; do
+> their PINs match across both apps. Parity was audited 2026-08-27 — 17/17 agents and 5/7 admins
+> are fine — but it is a snapshot, and a one-sided PIN rotation silently removes the control.
+>
+> If attendance events look missing, query `time_clock.attendance_event_audit` FIRST. On 8/27
+> three absent `lunch_late` rows read as a scoring bug and were a human deletion four minutes
+> earlier.
+>
+> Two databases: this app is Supabase `sralgaskfktcynpdxjhj`; the lunch bridge reaches
+> `eawpwwctsifzcclrwvww` (shared, no staging, **no PITR**). Use a `Zzz Smoke` disposable
+> contractor for anything mutating, delete it child-rows-first, and cast `id::text` for
+> `auth_sessions` or the batch rolls back and leaves the test row live in the admin dropdown.

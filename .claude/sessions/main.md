@@ -990,3 +990,37 @@ well: 11 agents used lunch, 8 inside the hour, 3 correctly scored 5 points at ti
 
 ### Where left off
 Nothing in flight. Everything measured in production, all repos clean.
+
+## Session — 2026-08-27 10:15 (wt: fhe-scoreboard)
+
+### Work Done
+- Closed out the efficiency work (`9dc615d`, `4e49ad5`) — both measured in production, logged
+  in TEST_LOG.md, shard + handoff written earlier in the day.
+- **Audited the other five FHE apps for the same two waste patterns. Both are scoreboard-only.**
+  goal-tracker, time-clock-tracking, FHE-Certifications, FHE-Appointed-Carriers,
+  fhe-command-center and fhe-coachings-tracker have zero `APP_VERSION` overlays and zero
+  row-counting timers. goal-tracker's three `setInterval`s are two 1-second local countdown
+  ticks (no network) plus one legitimate 30s data refresh.
+
+### Decisions
+- **Do not port the Range-fetch fix anywhere else** — there is nowhere to port it to. The cause
+  is structural: this is the only single-file `index.html` app in the suite, so it is the only
+  one that hand-rolls deploy-version detection; the Next.js apps get it from the framework.
+- Corrected the `reference_fhe_idle_traffic` memory, which had claimed both patterns were
+  "likely present in the sibling apps." Left as written it would have sent a future session
+  hunting for something that does not exist.
+- Left `get_pending_count_admin` as the only new DB object; `loadAdmin()` still fetches full
+  rows because it genuinely needs them for the money stats.
+
+### Where Left Off
+- **Nothing in flight.** Working tree clean, nothing unpushed, `APP_VERSION=2026-08-27-pending-count-rpc-001`
+  live and verified in production with no console errors.
+- Everything remaining is blocked on a human, not on code: rotate the Slack bot token (needs the
+  Slack admin UI); decide whether lunch should get its own point tiers instead of borrowing
+  `late_tier1..4_points` (all three of 8/26's lunch penalties were waived by hand); enable PITR
+  on `eawpwwctsifzcclrwvww` (paid, and Derrick is a *member* not an admin on that Supabase org
+  since the migration — same blocker as raising `max_rows` from 1000).
+- Process note for the next session: a `grep` that returns nothing and a `grep` that failed to
+  run look identical in output. The first pass of the sibling audit reported "none" for all six
+  apps because zsh had eaten the `--include` globs. Check the exit code before trusting a clean
+  bill of health.
