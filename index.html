@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- The deploy marker lives up here, inside the first kilobyte, so the update check can
+     Range-fetch 2KB instead of re-downloading this whole 141KB file every 20 seconds.
+     SINGLE SOURCE OF TRUTH — there must be exactly one of these in the file. Bump it on
+     every deploy or open tabs will never notice the change. -->
+<script>const APP_VERSION='2026-08-27-efficient-update-check-001';</script>
 <title>First Health Enrollment — Commission Scoreboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2266,15 +2271,37 @@ setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_c
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
 // is deployed with a different value here, agents are blocked with a full-screen
 // "refresh now" overlay instead of silently running stale code.
-const APP_VERSION='2026-08-26-admin-lunch-panel-001';
+// APP_VERSION is declared in <head> — see the note there. Deliberately not re-declared:
+// two `const`s in the same global scope is a SyntaxError that would blank the whole app.
 let updateOverlayShown=false;
+// The version seen on the PREVIOUS poll. A deploy has to be observed twice in a row before
+// the overlay appears: while a deploy propagates, Vercel's edges briefly disagree, so a tab
+// already running the new build can fetch a stale edge and be told to refresh again. Two
+// agreeing polls (40s) is a real deploy; one is noise.
+let pendingRemoteVersion=null;
+let lastUpdateCheck=0;
 async function checkForUpdate(){
   if(updateOverlayShown)return;
+  // focus and visibilitychange both fire for a single tab switch. Collapse anything inside
+  // 5s into one request instead of two.
+  const now=Date.now();
+  if(now-lastUpdateCheck<5000)return;
+  lastUpdateCheck=now;
   try{
-    const res=await fetch(window.location.pathname+'?_v='+Date.now(),{cache:'no-store'});
+    // Range: the marker is in the first KB, so 2KB is plenty and costs ~1.5% of a full
+    // fetch. A server that ignores Range returns 200 with the whole body and this still
+    // works — just as expensive as it used to be, never broken.
+    const res=await fetch(window.location.pathname+'?_v='+now,
+      {cache:'no-store',headers:{'Range':'bytes=0-2047'}});
     const html=await res.text();
     const match=html.match(/APP_VERSION=['"]([^'"]+)['"]/);
-    if(match&&match[1]&&match[1]!==APP_VERSION){
+    // No match means the response was truncated oddly or the marker moved — say nothing
+    // rather than nagging on a bad read.
+    if(!match||!match[1]){pendingRemoteVersion=null;return;}
+    const remote=match[1];
+    if(remote===APP_VERSION){pendingRemoteVersion=null;return;}
+    if(pendingRemoteVersion!==remote){pendingRemoteVersion=remote;return;}
+    {
       updateOverlayShown=true;
       document.getElementById('update-overlay').classList.add('open');
       // A wall-mounted TV has nobody to click "Refresh Now", so the board would sit behind
