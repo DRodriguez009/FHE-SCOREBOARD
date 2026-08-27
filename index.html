@@ -7,7 +7,7 @@
      Range-fetch 2KB instead of re-downloading this whole 141KB file every 20 seconds.
      SINGLE SOURCE OF TRUTH — there must be exactly one of these in the file. Bump it on
      every deploy or open tabs will never notice the change. -->
-<script>const APP_VERSION='2026-08-27-efficient-update-check-001';</script>
+<script>const APP_VERSION='2026-08-27-pending-count-rpc-001';</script>
 <title>First Health Enrollment — Commission Scoreboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2265,7 +2265,21 @@ async function populateLoginDropdowns(){
 }
 
 loadBoard();startRefresh();restoreAgentSession();restoreAdminSession();populateLoginDropdowns();
-setInterval(async()=>{if(!adminAuthed)return;const comms=await rpcAll('get_all_commissions_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token},'created_at.desc,id.asc').catch(()=>[]);const n=comms.filter(c=>c.status==='pending').length;const pill=document.getElementById('hdr-pcnt');pill.textContent=n;pill.style.display=n>0?'inline':'none';},60000);
+// Pending badge. This used to call get_all_commissions_admin every 60s -- every row, every
+// column, paged 1000 at a time -- and count 'pending' in JS: 274KB of transfer, measured, to
+// produce one small integer. get_pending_count_admin returns the count from Postgres.
+// loadAdmin() still fetches the full set, because it genuinely needs the rows for the
+// today/week/total money stats; only this poll was wasteful.
+setInterval(async()=>{
+  if(!adminAuthed)return;
+  let n;
+  try{n=await rpc('get_pending_count_admin',{p_username:currentAdmin.username,p_password:currentAdmin.token});}
+  catch(e){return;}  // leave the badge as-is on a hiccup rather than flashing a wrong 0
+  if(typeof n!=='number')return;
+  const pill=document.getElementById('hdr-pcnt');
+  pill.textContent=n;
+  pill.style.display=n>0?'inline':'none';
+},60000);
 
 // ── UPDATE-AVAILABLE CHECK ──
 // APP_VERSION is a marker baked into this HTML file. Every time a new index.html
