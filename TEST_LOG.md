@@ -675,3 +675,46 @@ PINs are identical across both apps for every agent on the scoreboard. Mark Cara
 - [ ] Parity is a snapshot, not a guarantee. Rotating a PIN in one app and not the other silently
       removes that person's lunch button — see [[project_pin_rotation_handoff_gap]] for the last
       time a one-sided rotation caused exactly this class of problem.
+
+---
+
+## Session 2026-08-27 — Update-check efficiency + overlay false positives
+
+### Feature Under Test: `checkForUpdate` (Range fetch, two-strike, debounce)
+### Result: PASS — measured in production
+
+The poll re-downloaded the whole 143KB page every 20s per tab, plus on every focus and
+visibilitychange, purely to read one version string. `APP_VERSION` moved to `<head>` (byte 472),
+so the check Range-fetches 2KB. Measured against production:
+
+| | Before | After |
+|---|---|---|
+| Per poll | 142,973 bytes | **2,048 bytes (1.4%)** |
+| Per tab per hour | 25 MB | 0.35 MB |
+| 20 tabs × 8h day | **3.83 GB** | **56 MB** |
+
+| Test | Result | Notes |
+|---|---|---|
+| Range header sent (production) | PASS | `bytes=0-2047`; marker readable inside it |
+| Fallback when Range is ignored | PASS | Verified against Python's `http.server`, which returns 200 + full body — regex still matches |
+| Same version → silent | PASS | No overlay, `pendingRemoteVersion` null |
+| New version, first sighting → silent | PASS | Records the candidate, shows nothing — a stale edge must not nag |
+| Sighting flaps back to current → strike resets | PASS | `pendingRemoteVersion` cleared |
+| Two agreeing sightings → overlay | PASS | Real deploy still prompts |
+| focus + visibilitychange double-fire | PASS | Collapsed to one request per 5s; 0 extra fetches |
+| Exactly one `APP_VERSION` declaration | PASS | Two `const`s in one scope is a SyntaxError that would blank the app |
+| Board / lunch button / admin card intact | PASS | Verified in production after deploy |
+
+### Why the overlay had been appearing repeatedly
+Not a caching bug — **`APP_VERSION` was bumped 5 times in ~24h** (4 on 8/25, 1 on 8/26), and each
+deploy interrupts every open tab within 20s. That was avoidable: the label change, the countdown
+and the exempt state should have been one deploy, not three. Related changes are batched from here.
+
+The two-strike rule addresses the separate, narrower case: during deploy propagation Vercel's
+edges briefly disagree (observed 8/26 — back-to-back fetches of the same URL returned different
+content), so a tab already on the new build could be told to refresh again.
+
+### Blockers / Follow-ups:
+- [ ] `setInterval` on the admin pending-count refetches **all** commissions every 60s just to
+      count pending rows. Same class of waste as this fix but needs a count RPC (DB change), so
+      it was left out rather than bundled unasked.
