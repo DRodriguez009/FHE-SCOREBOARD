@@ -36,6 +36,13 @@ no time-clock account. Both correctly get the link version. Full table in TEST_L
 removes that person's lunch button — no error, just an absent control. See
 `project_pin_rotation_handoff_gap` in memory for the last time a one-sided rotation did this.
 
+## Efficiency — done, don't redo
+Both polls that dominated idle traffic were fixed 2026-08-27 and measured in production: the
+update check `Range`-fetches 2KB instead of 143KB (`9dc615d`), and the pending badge counts in
+Postgres instead of shipping every commission (`4e49ad5`). `loadBoard`'s 30s refresh is the
+remaining periodic cost and it is doing real work. ⚠️ `APP_VERSION` now lives in `<head>` and
+must stay a single declaration — a second `const` in the same scope blanks the app.
+
 ## Open items
 - Nobody has punched a real lunch yet. Watch the first one.
 - Pre-existing: `max_rows` 1000 (needs an org owner to raise), `/favicon.ico` 404, real PINs in

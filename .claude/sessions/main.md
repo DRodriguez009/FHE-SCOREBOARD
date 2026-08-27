@@ -951,3 +951,42 @@ Nothing in flight. Two unknowns that need a human, not code:
   in silently; if no they get the link version. Not testable without a real credential.
 - **Nobody has punched a lunch in production yet** — button, DMs and both panels have only been
   exercised with disposable `Zzz Smoke` data.
+
+## Session — 2026-08-27 — Idle traffic, and a false alarm about lunch scoring
+
+Two perf commits, live and measured: `9dc615d` (update check) and `4e49ad5` (pending badge).
+`APP_VERSION=2026-08-27-pending-count-rpc-001`.
+
+### The same bug twice: paying six figures of bytes to learn one number
+- **Update check** re-downloaded the whole 143KB page every 20s per tab (plus on every focus AND
+  visibilitychange, which double-fire on one tab switch) to read one version string. `APP_VERSION`
+  moved into `<head>` at byte 472 so the poll `Range`-fetches 2KB. **142,973 → 2,048 bytes**;
+  across ~20 tabs over a workday, **3.83GB → 56MB**. A server that ignores `Range` returns the
+  full body and the regex still matches — the fallback is the old cost, never a break.
+- **Pending badge** polled `get_all_commissions_admin` every 60s — every row, every column, paged
+  by `rpcAll` — and counted `status='pending'` in JS. New `get_pending_count_admin(text,text)`
+  returns the integer from Postgres. **273,926 → 1 byte**; per admin tab per day, **125MB → 0.5KB**.
+
+### Overlay fixes riding along
+A new version must now be seen on **two consecutive polls** before the overlay shows — during
+deploy propagation Vercel's edges briefly disagree (observed 8/26: back-to-back fetches of the
+same URL returned different content), so a tab already on the new build could be told to refresh
+again. A sighting that flaps back resets the strike. The focus/visibilitychange double-fire is
+debounced to one request per 5s.
+
+⚠️ **`APP_VERSION` is declared ONCE, in `<head>`.** Do not re-add it to the main script — two
+`const`s in one global scope is a SyntaxError that blanks the whole app.
+
+### Why the overlay had been nagging
+Not caching: **5 APP_VERSION bumps in ~24h**. The label change, the countdown and the exempt state
+should have been one deploy, not three. Batch related changes.
+
+### A false alarm worth remembering
+Zero `lunch_late` rows next to three obviously-over lunches on 8/26 looked like a scoring bug. It
+was not — `time_clock.attendance_event_audit` showed Derrick deleted all three events at 13:30 on
+8/27, minutes before I looked. **Check that audit table before diagnosing missing attendance
+events.** Two dead-end hypotheses would have been skipped by one query. Day one otherwise went
+well: 11 agents used lunch, 8 inside the hour, 3 correctly scored 5 points at tier4.
+
+### Where left off
+Nothing in flight. Everything measured in production, all repos clean.
