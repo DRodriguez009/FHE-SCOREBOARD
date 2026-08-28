@@ -748,3 +748,36 @@ Test admin sessions from this audit were revoked (`sb_end_session`).
 - [ ] Nothing outstanding on efficiency. The two polls that dominated idle traffic (update check,
       pending badge) both now cost effectively nothing. `loadBoard` every 30s on the TV is the
       remaining periodic cost and it is doing real work — it renders the board.
+
+## Session 2026-08-28 — anon could mint betting lines; daily guard audit added
+
+### Result: PASS — hole closed, audit live
+
+| Test | Result | Notes |
+|------|--------|-------|
+| Static guard check (catalog only) | **1 real finding** | `generate_daily_matchups(p_force boolean)` anon-callable: VOLATILE, inserts into `bet_lines`, and `p_force := true` bypasses BOTH its weekend and 8-AM-ET guards |
+| Root cause | **CONFIRMED at ACL level** | `20260723190000:109` revokes from `anon, authenticated` but not `public`. Live ACL was `=X/postgres \| postgres=X \| service_role=X` — explicit anon grant gone, **PUBLIC left**, and anon inherits PUBLIC. Open since 2026-07-23; never a regression |
+| `auto_settle_daily_matchups()` — same omission | **already closed** | Live ACL `postgres=X \| service_role=X`, anon false. I flagged it as likely open and was **wrong**; checked instead of assuming. Re-asserted anyway |
+| What actually drives generation | **pg_cron job 1, as `postgres`** | `select public.generate_daily_matchups();` on `0 12,13 * * 1-5` (8 AM ET, doubled for DST). Corroborated by `bet_lines`: exactly 9 lines at 08:00 ET every weekday, never a weekend, 20+ days straight |
+| Only client call site | admin wrapper | `index.html:1606` calls `admin_generate_daily_matchups(p_username, p_password)`, which asserts admin then calls the raw fn from SECURITY DEFINER |
+| Apply revoke + verify | PASS | ACL now `postgres=X \| service_role=X`; `anon_can_generate` false |
+| **Cron path still works after the revoke** | PASS | Called as `postgres` at 09:00 ET: returned 0 and inserted nothing, correctly stopped by its own hour guard. Proves executability without creating lines |
+| Guard audit dry run | PASS | 57 functions, 0 findings, `invoker_open` = `odds_for_pair/2` (pure odds maths) |
+| **Slack alert path**, forced findings in `begin; … rollback;` | PASS | enqueued to `net.http_request_queue`, URL is a Slack webhook, `Content-Type: application/json` with no charset, body well-formed — then rolled back, nothing sent |
+| Schedule + webhook | PASS | `cron.job`: `guard-audit-daily @ 0 12 * * * as postgres`; webhook set (copied in-process, never printed or written to a file) |
+
+### Why in-database rather than the hub's Vercel cron
+This project has pg_cron 1.6.4 with jobs running as `postgres`, so the audit runs on a schedule with
+**no credential stored anywhere**. The alternative was putting this project's service_role key — which
+bypasses RLS on the money database — into the command-center's Vercel environment.
+
+### Still open
+- [ ] **33 credential-taking anon-executable functions here are behaviourally unverified.** The
+      audit is static (who may execute what). Probing guards by calling them with a wrong credential
+      means invoking betting/coin-ledger RPCs blind, and a settled line can never be re-settled — so
+      that needs a human driving it deliberately, once.
+- [ ] **Judgement call, not a bug:** `get_commission_stats`, `get_public_commission_feed` and
+      `scoreboard_month_commission` expose company commission figures to anyone holding the
+      publishable key in `index.html`. Allowlisted so the audit stays worth reading;
+      fhe-command-center's `/dashboard` depends on the last one being anon-callable. If that exposure
+      is unwanted the fix is a guarded overload plus a service-role read from the hub.
