@@ -7,7 +7,7 @@
      Range-fetch 2KB instead of re-downloading this whole 141KB file every 20 seconds.
      SINGLE SOURCE OF TRUTH — there must be exactly one of these in the file. Bump it on
      every deploy or open tabs will never notice the change. -->
-<script>const APP_VERSION='2026-08-27-pending-count-rpc-001';</script>
+<script>const APP_VERSION='2026-09-04-wallet-error-honesty-001';</script>
 <title>First Health Enrollment — Commission Scoreboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -456,6 +456,7 @@ select option{background:#020802}
         <div class="login-sub">First Health Enrollment</div>
       </div>
       <div class="card">
+        <div id="sb-gate-note"></div>
         <div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:1rem">Sign in as an agent or manager/admin to place bets. Use the Agent Portal or Admin tab to sign in first, then come back here.</div>
         <button class="btn btn-primary btn-full" onclick="navTo('agent')">Go to Agent Sign In</button>
         <div style="height:8px"></div>
@@ -471,7 +472,7 @@ select option{background:#020802}
         <div style="font-size:12px;color:var(--muted)">Bet Mike Coins on weekly performance — bragging rights only, no real money</div>
       </div>
       <div class="flex">
-        <div class="pb-badge" id="sb-balance" style="font-size:14px;padding:8px 16px">🪙 0 Mike Coins</div>
+        <div class="pb-badge" id="sb-balance" style="font-size:14px;padding:8px 16px">🪙 … Mike Coins</div>
         <button class="btn btn-ghost btn-sm" onclick="loadSportsbook()">↻ Refresh</button>
       </div>
     </div>
@@ -1498,8 +1499,47 @@ function getCurrentBettor(){
   return null;
 }
 
+// Every token-bearing RPC here RAISES 'invalid credentials' (P0001) on a dead or expired
+// session rather than returning an empty row — verified against production. Match on the
+// message, not the code alone: place_bet raises P0001 for ordinary refusals too
+// ('insufficient balance', 'exceeds max bet', 'line closed'), and those must not be read
+// as a logout. No other raise in this schema contains the string 'invalid credentials' —
+// checked against every `raise exception` in supabase/migrations.
+function isCredsError(e){
+  return !!e && /invalid credentials/i.test(e.message||'');
+}
+
+// Returns {ok:true,coins} | {ok:false,expired:bool}. It deliberately does NOT return a
+// number on failure. The old version was `.catch(()=>null)` and every caller did
+// `wallet?Number(wallet.coins)||0:0`, so an expired 12h token rendered as a perfectly
+// plausible "🪙 0 Mike Coins" — an agent could not tell "your coins are gone" from
+// "I couldn't ask". Reported 2026-09-04: Albert Gonzalez read 0 while the Coin Standings
+// list directly below him still showed his real 2,067, because that list calls
+// get_agents_board, which is anon and needs no token. Never collapse an error into a
+// balance.
 async function getBettorWallet(bettor){
-  return await rpc('get_wallet',{p_bettor_type:bettor.type,p_bettor_id:String(bettor.id),p_pin:bettor.token,p_admin_password:bettor.adminToken}).then(rows=>rows&&rows[0]?rows[0]:null).catch(()=>null);
+  try{
+    const rows=await rpc('get_wallet',{p_bettor_type:bettor.type,p_bettor_id:String(bettor.id),p_pin:bettor.token,p_admin_password:bettor.adminToken});
+    const row=rows&&rows[0]?rows[0]:null;
+    return row?{ok:true,coins:Number(row.coins)||0}:{ok:false,expired:false};
+  }catch(e){
+    return{ok:false,expired:isCredsError(e)};
+  }
+}
+
+// A dead token is a sign-out, not a zero balance. Tear down the session that actually
+// expired (agentLogout/adminLogout also revoke server-side and kill the paired
+// time-clock token), drop back to the sportsbook gate, and say why.
+async function sbSessionExpired(){
+  const type=sbCurrentBettor?sbCurrentBettor.type:null;
+  sbCurrentBettor=null;
+  try{
+    if(type==='agent')await agentLogout();
+    else if(type==='manager')await adminLogout();
+  }catch(e){}
+  document.getElementById('sb-main').style.display='none';
+  document.getElementById('sb-login-gate').style.display='block';
+  alert$('sb-gate-note','Your session expired — please sign in again. Your Mike Coins balance is untouched.','error');
 }
 
 async function applyHouseCreditIfNeeded(bettor){
@@ -1515,6 +1555,7 @@ async function initSportsbook(){
   }
   document.getElementById('sb-login-gate').style.display='none';
   document.getElementById('sb-main').style.display='block';
+  alert$('sb-gate-note','','');
   document.getElementById('sb-manager-tools').style.display=sbCurrentBettor.type==='manager'?'block':'none';
   document.getElementById('sb-manager-lines').style.display=sbCurrentBettor.type==='manager'?'block':'none';
   if(sbCurrentBettor.type==='manager')document.getElementById('sbl-suggest-btn').style.display='inline-flex';
@@ -1525,8 +1566,9 @@ async function initSportsbook(){
 async function loadSportsbook(){
   if(!sbCurrentBettor)return;
   const wallet=await getBettorWallet(sbCurrentBettor);
-  const coins=wallet?Number(wallet.coins)||0:0;
-  document.getElementById('sb-balance').textContent=`🪙 ${coins.toLocaleString()} Mike Coins`;
+  if(!wallet.ok&&wallet.expired){await sbSessionExpired();return;}
+  document.getElementById('sb-balance').textContent=wallet.ok?`🪙 ${wallet.coins.toLocaleString()} Mike Coins`:'🪙 — Mike Coins';
+  if(!wallet.ok)alert$('sb-alert',"Couldn't load your balance just now — your Mike Coins are safe. Try ↻ Refresh.",'error');
 
   if(sbCurrentBettor.type==='manager'){
     await loadAgentDropdownsForLines();
@@ -1715,7 +1757,14 @@ async function openBetModal(lineId,side,sideLabel,odds){
   document.getElementById('bm-side').value=side;
   document.getElementById('bm-side-display').textContent=`Betting on: ${sideLabel} — payout ${odds}x`;
   const wallet=await getBettorWallet(sbCurrentBettor);
-  const coins=wallet?Number(wallet.coins)||0:0;
+  // Don't open a modal quoting a balance we couldn't read — a "0 / max bet 0" prompt on an
+  // expired token is what made this look like lost coins in the first place.
+  if(!wallet.ok){
+    if(wallet.expired){await sbSessionExpired();return;}
+    alert("Couldn't read your balance just now — your Mike Coins are safe. Refresh and try again.");
+    return;
+  }
+  const coins=wallet.coins;
   document.getElementById('bm-balance-note').textContent=`Your balance: ${coins} Mike Coins · Max bet: ${Math.floor(coins*0.5)} (50% cap)`;
   document.getElementById('bm-amount').value='';
   document.getElementById('bet-modal').classList.add('open');

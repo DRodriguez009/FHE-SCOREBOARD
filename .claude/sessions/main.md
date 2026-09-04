@@ -1024,3 +1024,56 @@ Nothing in flight. Everything measured in production, all repos clean.
   run look identical in output. The first pass of the sibling audit reported "none" for all six
   apps because zsh had eaten the `--include` globs. Check the exit code before trusting a clean
   bill of health.
+
+## Session — 2026-09-04 — "Albert has 0 Mike Coins": a false zero in the wallet display
+
+### Work Done
+- Investigated a report that Albert Gonzalez had 0 Mike Coins. **He never lost any.**
+  `agents.coins` = **2,067** (4th on the board); 196 sales / $31,555 in `get_scoreboard_totals`;
+  lifetime betting 27 settled bets, 15 won, net **−33**. There was no drain event to find.
+- Root cause was client-side: `getBettorWallet` was `rpc('get_wallet',…).catch(()=>null)` and both
+  callers did `wallet?Number(wallet.coins)||0:0`. `get_wallet` **raises** `P0001 invalid credentials`
+  on a dead token instead of returning an empty row, so an expired 12h session rendered a confident
+  `🪙 0 Mike Coins`.
+- Fixed in `index.html`: `getBettorWallet` now returns `{ok,coins}`/`{ok:false,expired}`;
+  new `isCredsError()` + `sbSessionExpired()` turn a dead token into a real sign-out with a
+  message; non-credential failures render `🪙 —` and keep the session; the bet modal refuses to
+  open on a balance it could not read; static placeholder `🪙 0` → `🪙 …`.
+  `APP_VERSION=2026-09-04-wallet-error-honesty-001`.
+- Verified all three branches in a real browser against production (expired / valid / transient),
+  plus five ordinary bet refusals that must NOT log anyone out. Logged in TEST_LOG.md.
+
+### Decisions
+- **Key the credential check off the error *message*, never `P0001` alone.** `place_bet` raises
+  P0001 for `insufficient balance`, `exceeds max bet`, `line closed` — matching the code would sign
+  people out for ordinary bet refusals. Checked every `raise exception` in `supabase/migrations`:
+  nothing but the credential check contains "invalid credentials".
+- **An unreadable balance must never render as a number.** `—` for transient failures, a sign-out
+  for dead tokens. This is the whole bug class, and the same `.catch(()=>null)`-into-a-number shape
+  may exist in the sibling apps — not audited.
+- Reused `agentLogout`/`adminLogout` in `sbSessionExpired` rather than hand-clearing state, so the
+  server-side revoke and the paired time-clock token die too.
+- Left `applyHouseCreditIfNeeded`'s empty catch alone — it has no display, so it cannot lie.
+
+### Diagnostic worth keeping
+**The screen diagnoses this itself.** Coin Standings sits directly below the balance badge and calls
+`get_agents_board`, which is anon and tokenless. If the standings show someone's real coins while
+their own badge shows 0, it is the session, not the wallet — do not go digging in `coin_ledger`.
+
+### Test-harness trap (cost one wrong "the fix failed")
+The first browser run reported `expired:false` and looked like a broken fix. The harness was wrong:
+`currentAgent` is a top-level **`let`**, which is *not* a window property, so `window.currentAgent = …`
+set an unrelated field, `getCurrentBettor()` still returned null, and `getBettorWallet(null)` threw a
+TypeError that got classified as a non-credential failure. Assign the lexical binding directly inside
+`page.evaluate`. Function declarations like `rpc` *do* land on `window` and can be stubbed. Also never
+call `navTo()` in a wallet test — it fires its own async `initSportsbook()` that races the assertion
+and repaints the DOM.
+
+### Where Left Off
+- Nothing in flight. Two files changed (`index.html`, `TEST_LOG.md`), shipped this session.
+- **Albert can see his 2,067 immediately by signing out and back in** — the fix prevents the next
+  person from being scared, it doesn't need to be live for him.
+- Carried over, all human-blocked: rotate the Slack bot token; decide whether lunch gets its own
+  point tiers; PITR on `eawpwwctsifzcclrwvww` (Derrick is a member, not an admin).
+- Unaudited follow-up: the same swallow-the-error-and-render-a-number pattern in the five sibling
+  apps.

@@ -781,3 +781,48 @@ bypasses RLS on the money database — into the command-center's Vercel environm
       publishable key in `index.html`. Allowlisted so the audit stays worth reading;
       fhe-command-center's `/dashboard` depends on the last one being anon-callable. If that exposure
       is unwanted the fix is a guarded overload plus a service-role read from the hub.
+
+---
+
+## Session 2026-09-04 — "Albert has 0 Mike Coins": a false zero, not a lost balance
+
+### Feature Under Test: sportsbook wallet display — error handling
+### Result: PASS
+
+**Reported:** Albert Gonzalez showed 0 Mike Coins. **His balance was never touched** —
+`agents.coins` = **2,067** (4th on the board), lifetime betting 27 settled bets / 15 won /
+net **−33** coins. The 0 was the client inventing a number.
+
+**Root cause:** `getBettorWallet` was `rpc('get_wallet',…).catch(()=>null)` and both callers did
+`wallet?Number(wallet.coins)||0:0`. `get_wallet` **raises** `P0001 invalid credentials` on a dead
+or expired token rather than returning an empty row, so an expired 12h session rendered as a
+confident `🪙 0 Mike Coins`. The giveaway on screen: Coin Standings directly below still showed
+his real 2,067, because that list calls `get_agents_board` — anon, no token.
+
+| Test | Result | Notes |
+|------|--------|-------|
+| `get_wallet` behaviour on a bad token (prod REST) | CONFIRMED | HTTP 400 `{"code":"P0001","message":"invalid credentials"}` — raises, never returns an empty row |
+| Albert's real balance | 2,067 | `get_agents_board` (anon); `get_scoreboard_totals` shows 196 sales / $31,555 — top producer, nothing anomalous |
+| Albert's lifetime betting | net −33 | `get_settled_bets_public`, 27 bets. No drain event exists to explain a 0 |
+| Error shape thrown by supabase-js | verified | Plain object, not an `Error`: keys `code/details/hint/message`. `isCredsError` reads `.message`, so it works on it |
+| Branch A — valid wallet | PASS | `{ok:true,coins:2067}` → renders `🪙 2,067 Mike Coins` |
+| Branch B — transient failure (`Failed to fetch`) | PASS | Renders `🪙 — Mike Coins` + "your Mike Coins are safe"; **stays signed in**, panel still visible |
+| Branch C — expired token, end to end vs prod | PASS | Bad token for Albert's real id → session torn down, `sessionStorage` agent key cleared, sportsbook main hidden, gate shown reading "Your session expired — please sign in again. Your Mike Coins balance is untouched." Balance never rendered a number |
+| False-logout guard | PASS | `insufficient balance` / `exceeds max bet` / `line closed` / `invalid amount` / `invalid side` all → `wouldLogOut:false`. Matching on the message, not `P0001`, is what makes this safe — `place_bet` raises P0001 for ordinary refusals |
+| `isCredsError(null)` | PASS | false, no throw |
+| Bet modal on an unreadable balance | PASS | Refuses to open rather than quoting "0 / max bet 0" |
+| Inline `<script>` syntax | PASS | Both blocks `node --check` clean; exactly 1 `APP_VERSION` declaration |
+| Console on load | clean | Only the pre-existing `/favicon.ico` 404 |
+
+### Test-harness note worth keeping
+The first run reported `expired:false` and looked like the fix had failed. It hadn't — the harness
+set `window.currentAgent`, but `currentAgent` is a top-level **`let`**, which is *not* a window
+property. So `getCurrentBettor()` still saw null, `getBettorWallet(null)` threw a TypeError on
+`bettor.type`, and that got classified as a non-credential failure. Assign the lexical binding
+directly in `page.evaluate` (`currentAgent = {...}`). Function declarations like `rpc` *do* land on
+`window` and can be stubbed. Also don't call `navTo()` in a wallet test — it fires its own async
+`initSportsbook()` that races the assertion and repaints the DOM.
+
+### Blockers / Follow-ups
+- [ ] Not deployed yet — `APP_VERSION=2026-09-04-wallet-error-honesty-001` is bumped but unshipped.
+- [ ] Same `.catch(()=>null)`-into-a-number shape may exist in sibling apps; not audited here.
