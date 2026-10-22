@@ -42,12 +42,11 @@ No TASKS.md in this repo. Nothing outstanding in code. All carried-over items ar
   head_to_head lines with `created_at::date < today`, so today's lines cannot settle today.
 
 ## Kickstart Prompt
-> Read the last `## Session` block in `.claude/sessions/main.md`. **Nothing is in flight.**
->
-> `index.html` + `TEST_LOG.md` are **uncommitted**: that's the 2026-09-04 transport session-hook
-> work (`fetchWithSessionExpiry`, tested PASS against prod, never shipped) plus a one-line alert
-> wording fix. `APP_VERSION` is `2026-09-04-transport-session-hook-002`. Shipping index.html ships
-> that hook — intended, but know it before you push.
+> Read the last `## Session` block in `.claude/sessions/main.md`. **Nothing is in flight** — as of
+> 2026-10-22 (`4cf27ee`) everything is committed, pushed and live, including the 2026-09-04
+> transport session hook and the server-side bettor leaderboard (`get_bettor_leaderboard_public`,
+> migration `20261022120000`). DDL goes through the dashboard SQL editor (paste the migration,
+> run verify queries one at a time — the editor shows only the last result grid).
 >
 > **Before editing `index.html`:** it is one ~152KB file. Edit with python string replacements that
 > assert a match count of 1, then extract the inline `<script>` blocks and `node --check` each.

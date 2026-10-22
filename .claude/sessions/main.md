@@ -1209,3 +1209,16 @@ revoke, for the reason the sibling helper documents.
   unreadable from here, and wrapping guarantees the two can never disagree.
 - SECURITY INVOKER, so no guard-audit allowlist entry is needed.
 - `get_settled_bets_public` left in place (allowlisted, harmless); nothing in the app reads it now.
+
+### Shipped + verified
+- Commit `4cf27ee` pushed to main; Vercel prod deploy Ready (`fhe-scoreboard-g2cba25ri`), serving
+  `APP_VERSION=2026-09-04-transport-session-hook-002` + the new RPC call. Canary: all checks pass,
+  leaderboard endpoint 16 rows.
+- Smoke (Playwright, read-only) PARTIAL-by-design: ran the deployed `loadBettorLeaderboard` in-page
+  (sportsbook is login-gated, and agent login can apply the daily house credit — a write) → top 10
+  identical to pre-change totals; old per-bet RPC no longer requested; only console error is the
+  known favicon 404. Logged in TEST_LOG.md.
+
+### Where Left Off
+- Nothing in flight. Only unverified bit: the leaderboard inside the logged-in sportsbook view
+  (same function) — eyeball on the next real agent login.

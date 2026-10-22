@@ -885,3 +885,20 @@ deliberately does not revoke. The sibling helper documents the same reasoning.
 
 ### Blockers / Follow-ups:
 - [ ] Post-deploy: canary clean + leaderboard renders on prod
+
+## Smoke — 2026-10-22 14:10
+
+### URL: https://fhe-scoreboard.vercel.app
+### Surface: playwright-mcp (headless)
+### Overall: PARTIAL
+
+| Check | Result | Details |
+|-------|--------|---------|
+| Route: / | PASS | 0 failed RPCs; 1 console error = known `/favicon.ico` 404 |
+| Deployed version | PASS | `APP_VERSION=2026-09-04-transport-session-hook-002`; no update overlay on a fresh load |
+| Bettor Leaderboard (deployed `loadBettorLeaderboard`, run in-page) | PASS | calls `get_bettor_leaderboard_public` → 200; top 10 rendered, values identical to pre-change totals (Gabriel +61,630,573, Bryan +23,834,924) |
+| Old per-bet RPC | PASS | `get_settled_bets_public` no longer requested |
+| Flow: loginAgent / loginAdmin | SKIPPED | read-only run — agent login can apply the daily house credit (a write) |
+
+### Blockers / Follow-ups:
+- [ ] Next real agent login: eyeball the leaderboard in the gated sportsbook view (same function, verified above)
