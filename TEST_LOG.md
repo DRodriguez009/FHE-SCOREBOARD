@@ -826,3 +826,62 @@ directly in `page.evaluate` (`currentAgent = {...}`). Function declarations like
 ### Blockers / Follow-ups
 - [ ] Not deployed yet — `APP_VERSION=2026-09-04-wallet-error-honesty-001` is bumped but unshipped.
 - [ ] Same `.catch(()=>null)`-into-a-number shape may exist in sibling apps; not audited here.
+
+---
+
+## Session 2026-09-04 (part 2) — Credential refusal caught once, at the transport
+
+### Feature Under Test: `fetchWithSessionExpiry` on the scoreboard Supabase client
+### Result: PASS
+
+The morning's wallet fix was per-call-site; the other ~30 privileged RPCs still handled a dead
+token however each call site happened to. This adds the choke point all six Next.js siblings have
+had since day one (`lib/supabase.ts` → `isCredentialRejection` → `expireSession`).
+
+**The design problem unique to this app:** the sibling apps have ONE session, so their teardown
+needs no attribution. Here the Agent Portal and the Admin tab are **separate logins that can both
+be live in the same tab**. So the hook does not guess from the RPC name — it matches the refusal
+against the token that was actually sent (`p_pin` = agent, `p_password`/`p_admin_password` =
+admin) and tears down only that principal.
+
+| Test (network stubbed *beneath* the real hook, so the hook itself executes) | Result | Notes |
+|------|--------|-------|
+| Agent token refused, agent signed in | PASS | Agent torn down, `al-alert` explains, session key cleared, login screen shown |
+| Admin token refused, admin signed in | PASS | Admin torn down, `adl-alert` explains, panel hidden, pending badge hidden |
+| **Both signed in, only the AGENT token refused** | PASS | **Only the agent is signed out — the admin session survives.** The case that made token-matching necessary |
+| `insufficient balance` (**same P0001**) | PASS | Nobody signed out, no notice. This is why the detector matches the message, not the code |
+| `exceeds max bet` (same P0001) | PASS | Nobody signed out |
+| Refusal carrying a token that is not the live session | PASS | Ignored — an anonymous caller poking a gated RPC is not a session going bad, and must not plant a stale notice for the next person to log in |
+| **Time-clock project refusal** | PASS | Scoreboard session untouched. The `tct` client deliberately has NO hook: a refused lunch punch must never sign anyone out of the leaderboard (the 2026-08-19 rule) |
+| Deliberate sign-out (`sb_end_session`, `p_token`) refused | PASS | No "session expired" notice. `p_token` is excluded from matching precisely so a Log-out click can't produce one |
+| Burst of 6 simultaneous refusals | PASS | **1** teardown, not 6 — the `sbExpiring` guard collapses one page load's worth of refusals into one sign-out |
+| Unstubbed load against live prod | PASS | Board renders 19 agents, hook installed, **zero console errors**, no spurious notices |
+| Regression: this morning's wallet fix | PASS | Dead token → transport tears the agent down AND the balance still never renders a number (`🪙 …`). Both layers cooperate; neither is redundant |
+| Inline `<script>` syntax | PASS | Both blocks `node --check` clean; exactly 1 `APP_VERSION`, 1 `isCredsError`, 1 `sbExpireSession` |
+
+### A bug this fixed on the way past
+`sbSessionExpired()` (added this morning) called `agentLogout()`/`adminLogout()`, which revoke
+server-side via `sb_end_session` — **a second doomed request with an already-dead token, and a
+re-entry into the hook now that one exists.** It now delegates to `sbExpireSession`, which
+deliberately does not revoke. The sibling helper documents the same reasoning.
+
+### Follow-ups
+- [ ] Not deployed. `APP_VERSION=2026-09-04-transport-session-hook-002`.
+- [ ] ~30 admin call sites still `alert('Error …')` on failure. With the hook in place an expired
+      token now signs you out *and* shows that generic alert — an improvement, but the alerts are
+      now redundant noise on the credential path. Not touched; 30 call sites.
+
+## Session — 2026-10-22
+
+### Feature Under Test: server-side bettor leaderboard (`get_bettor_leaderboard_public`)
+### Result: PASS
+
+| Test | Result | Notes |
+|------|--------|-------|
+| RPC live via anon REST | PASS | HTTP 200, `content-range: 0-15/16` |
+| Per-bettor net matches old client math | PASS | all 16 identical to pre-change computation over `get_settled_bets_public` |
+| sum(bet_count) == settled bets | PASS | 856 == 856 |
+| Inline JS syntax | PASS | `node --check` on extracted scripts |
+
+### Blockers / Follow-ups:
+- [ ] Post-deploy: canary clean + leaderboard renders on prod

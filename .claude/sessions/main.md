@@ -1077,3 +1077,135 @@ and repaints the DOM.
   point tiers; PITR on `eawpwwctsifzcclrwvww` (Derrick is a member, not an admin).
 - Unaudited follow-up: the same swallow-the-error-and-render-a-number pattern in the five sibling
   apps.
+
+## Session — 2026-09-10 12:44 (wt: fhe-scoreboard)
+
+Continuation of the same working session as the 2026-09-04 block above — that one covered the
+wallet fix (shipped, `6ce7886`); this covers the transport hook, which is **written and verified
+but NOT committed.**
+
+### Work Done
+- Swept all six sibling apps for the false-zero bug class the wallet fix exposed. Result recorded
+  in `project_fhe_app_suite` memory so nobody redoes it: **every Next.js sibling already catches a
+  dead credential at the transport** (`lib/supabase.ts` → `isCredentialRejection` →
+  `expireSession`). The scoreboard was the outlier for a *structural* reason — it is the only
+  single-file app, so it has a hand-rolled `rpc()` and no choke point.
+- Fixed the sweep's one real finding in a different repo: `FHE-Appointed-Carriers` four read paths
+  (shipped there, `83c2186`, verified on prod).
+- **Built the scoreboard's transport hook** (`fetchWithSessionExpiry`, installed via
+  `global.fetch` on the `sb` client only). Lifted `isCredsError` out of the sportsbook section up
+  to the transport, added `sbExpireSentCredential` + `sbExpireSession`, and refactored
+  `sbSessionExpired` to delegate. `APP_VERSION=2026-09-04-transport-session-hook-002`.
+- Verified 12 cases in a browser with the network stubbed *beneath* the real hook. Full matrix in
+  TEST_LOG.md.
+
+### Decisions
+- **Attribute a refusal by the token that was SENT, never by the RPC name.** This app is the only
+  one in the suite where two principals can be signed in *in the same tab* — Agent Portal and
+  Admin are separate logins. `p_pin` = agent, `p_password`/`p_admin_password` = admin. Tested with
+  both live: only the refused principal is torn down.
+- **`p_token` is excluded from matching on purpose** — that is `sb_end_session` /
+  `sb_session_whoami`, i.e. a deliberate Log-out or a restore probe. Matching it would show
+  "session expired" to someone who just clicked Log out.
+- **The `tct` (time-clock) client deliberately gets NO hook.** A refused lunch punch must never
+  sign anyone out of the leaderboard — the 2026-08-19 rule that a secondary feature must not
+  become a hard dependency of a primary one.
+- **`42501` is NOT matched, unlike the sibling detector.** Here it would mean a missing EXECUTE
+  grant — a deployment fault, not an expired session — and signing someone out for it sends them
+  re-typing a PIN that was never the problem.
+- **Match the message, not `P0001`.** `place_bet` raises P0001 for `insufficient balance` /
+  `exceeds max bet` / `line closed`. Both tested: neither signs anyone out.
+- Kept `getBettorWallet`'s own creds check even though the transport now fires first — it is what
+  guarantees the balance is never rendered as a number, and `sbExpireSession` is idempotent.
+
+### Fixed one of my own defects from earlier the same session
+`sbSessionExpired()` as first written called `agentLogout()`/`adminLogout()`, which revoke
+server-side via `sb_end_session` — a second doomed request with an already-dead token, and a
+re-entry into the hook once one existed. It now delegates to `sbExpireSession`, which does not
+revoke, for the reason the sibling helper documents.
+
+### Where Left Off
+- **UNCOMMITTED, verified, not deployed:** `index.html` (the hook) + `TEST_LOG.md`. This is the
+  only loose end in either repo. Held deliberately, not forgotten: the `APP_VERSION` bump throws
+  the full-screen update overlay at the whole sales floor, and it was mid-shift Friday. **Derrick
+  has the timing call.** A local commit is safe on its own — only the push triggers Vercel.
+- `FHE-Appointed-Carriers` is fully closed out: committed, pushed, deployed, verified on prod, its
+  own shard + handoff written.
+- Still open suite-wide, none started: the ~11 login-dropdown fetches that render an empty name
+  picker on a failed read (across six apps); and ~30 admin call sites here that still
+  `alert('Error …')`, now redundant noise on the credential path.
+- Carried, all human-blocked: **the Supabase CLI access token is EXPIRED (2026-09-02)** and blocks
+  the next migration in any FHE repo — highest-leverage item; Slack bot token rotation; PITR on
+  `eawpwwctsifzcclrwvww`; whether lunch gets its own point tiers.
+
+## Session — 2026-09-08 (wrapped 2026-09-10 12:46) — Bryan's bets voided and the day's book reopened, without any database access
+
+### Work Done
+- **Request:** void all of Bryan Sequeira's bets so he could re-place them, and add a self-serve
+  "take a bet back" button that closes when the book locks.
+- **Both halves needed the DB, and the DB was unreachable all day.** The Supabase keychain token
+  (`sbp_c649…`) returned 401 from the CLI *and* from `api.supabase.com` directly — expired since
+  ~2026-09-02. `npx supabase login` cannot run under Claude Code's `!` prefix (non-TTY,
+  `LegacyLoginMissingTokenError`), so no SQL and no DDL happened this session.
+- **Bryan's half was delivered anyway, through the app's own admin RPCs driven in a browser**
+  (Playwright MCP). Admin PIN read from the credentials sheet per [[reference_credentials_sheet]].
+  Sequence: capture pre-state → `cancel_bet_line` ×9 → `create_bet_line` ×9 → `admin_set_announcement`.
+- Result, verified against expected figures exactly: **Bryan 14 bets / 28,983 coins returned
+  (5,000 → 33,983); Gabriel Tamayo 5 bets / 5,325 returned (50,010 → 55,335)**; all 19 bets on
+  those lines went `pending` → `refunded`, 0 left pending.
+- The take-back button was fully written and syntax-checked, then **parked unbuilt** at the user's
+  request → `~/Projects/_rollbacks/parked-takeback-button-2026-09-08/` (migration + a copy of
+  index.html carrying the UI). `index.html` was surgically reverted; its `loadMyBets` block is now
+  byte-identical to HEAD.
+
+### Decisions
+- **A withdrawn bet must be DELETED, not given a `cancelled` status.** `sb_resettle_line` loops
+  over bets on a line with NO status filter and resets every row to `pending`, so a withdrawn row
+  would be resurrected — the reversal loop only matches `won`/`refunded`, so a `cancelled` row's
+  already-returned stake is never clawed back and the re-settle then pays it out. That mints coins.
+  `settle_bet_line` could not even be audited: it was created via MCP and is not in this repo.
+  Deleting the row is correct under every settlement path, present and future. History was to go to
+  a new `bet_cancellations` table + the coin_ledger reason. (All in the parked migration's header.)
+- **The withdraw gate reuses `place_bet`'s two conditions verbatim** (`status='open'` and
+  `now() < closes_at`) so "closes when the bets lock" can never drift from when betting actually locks.
+- **Reopening was done by recreating the lines, and that was the only lever available.** There is
+  no admin RPC that voids a single bet, and none that edits `closes_at`.
+- Kept one unrelated one-line fix: the bet-refusal alert no longer claims "the book locked at
+  10:20 AM ET", because that stopped being true for the recreated lines.
+
+### Where Left Off
+- **Nothing in flight. Bryan's request is done and settled out.** Two days on, the Sep 8 lines are
+  off the open book and **Sep 10's matchups generated normally with a proper 10:20 lock**, so the
+  no-`closes_at` anomaly was confined to Sep 8 and the generator is healthy.
+- `index.html` + `TEST_LOG.md` remain **uncommitted** — that is the 2026-09-04 transport
+  session-hook work (tested PASS, never shipped), plus the one-line alert wording. `APP_VERSION` is
+  back to `2026-09-04-transport-session-hook-002`.
+- **Balance check that looks alarming and is not:** Bryan sits at **1 coin** and Gabriel at
+  **14,000**. That is staked money, not lost money — stakes debit at placement. Across Sep 8–10
+  Bryan placed 54 bets and lost only 4, with **17 still pending including 50,885 on "Marlon vs
+  Abraham — Sep 10"**; Gabriel has 7 pending, 40,186 of it on the same line. Both positions locked
+  at 10:20 ET today and settle tomorrow ~07:30 ET. If a "Bryan has no coins" report arrives, read
+  his pending bets before touching the ledger.
+- Carried over, all human-blocked: refresh the Supabase token (a dashboard **PAT** is the durable
+  fix — browser-flow tokens die with the dashboard session); ask for owner (not member) on the FHE
+  Supabase org, which also unblocks PITR and the `max_rows` 1000 cap; rotate the Slack bot token.
+- The announcement banner from 9/08 may still be up — clear it with `admin_set_announcement`
+  (`p_message: null`) if so.
+
+## Session — 2026-10-22 14:10 — bettor leaderboard moved server-side (row-cap canary)
+
+### Work Done
+- Canary warned `get_settled_bets_public` at 856 rows (16 bettors) — approaching PostgREST's
+  1000-row cap, past which the sportsbook's Bettor Leaderboard would silently under-count.
+- New RPC `get_bettor_leaderboard_public()` (migration `20261022120000`): SECURITY INVOKER SQL
+  wrapper that groups `get_settled_bets_public()` per bettor — one row per bettor, same net math
+  the browser used. Applied by Derrick in the dashboard SQL editor; verified via anon REST:
+  16 rows, every net identical to the pre-change client computation, sum(bet_count) = 856.
+- `loadBettorLeaderboard` now reads the new RPC; canary watches it instead of the per-bet RPC.
+- Shipped together with the held 2026-09-10 transport session hook ("ship everything").
+
+### Decisions
+- Wrap the existing RPC rather than re-derive bettor_name from `bets` — its body is prod-only and
+  unreadable from here, and wrapping guarantees the two can never disagree.
+- SECURITY INVOKER, so no guard-audit allowlist entry is needed.
+- `get_settled_bets_public` left in place (allowlisted, harmless); nothing in the app reads it now.

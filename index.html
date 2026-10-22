@@ -7,7 +7,7 @@
      Range-fetch 2KB instead of re-downloading this whole 141KB file every 20 seconds.
      SINGLE SOURCE OF TRUTH — there must be exactly one of these in the file. Bump it on
      every deploy or open tabs will never notice the change. -->
-<script>const APP_VERSION='2026-09-04-wallet-error-honesty-001';</script>
+<script>const APP_VERSION='2026-09-04-transport-session-hook-002';</script>
 <title>First Health Enrollment — Commission Scoreboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -713,9 +713,53 @@ select option{background:#020802}
 </div>
 
 <script>
+// Does this failed response (or thrown error) mean "your credential is no longer good"?
+//
+// Every token-bearing RPC here RAISES 'invalid credentials' (P0001) on a dead or expired session
+// rather than returning an empty row — verified against production. Both a PostgREST error body
+// and a supabase-js error object carry `.message`, so one detector serves the transport hook and
+// the per-call-site checks alike.
+//
+// MATCH ON THE MESSAGE, NOT THE CODE. place_bet raises P0001 for ordinary refusals too
+// ('insufficient balance', 'exceeds max bet', 'line closed'), and keying off the code would sign
+// people out for a bet they simply cannot afford. Checked against every `raise exception` in
+// supabase/migrations: nothing but the credential check contains 'invalid credentials'.
+//
+// 42501 is deliberately NOT matched, unlike the sibling apps' detector. Here that would mean a
+// missing EXECUTE grant — a deployment fault, not an expired session — and signing someone out
+// for it would send them re-typing a PIN that was never the problem.
+function isCredsError(e){
+  return !!e && /invalid credentials/i.test(e.message||'');
+}
+
+// ── CREDENTIAL REFUSAL, CAUGHT ONCE AT THE TRANSPORT ──
+// Every one of the ~30 privileged RPCs here refuses a token it no longer accepts, and each call
+// site would otherwise have to notice. Before this, none of them did: a dead 12h token surfaced
+// as whatever that call site happened to do with a thrown error — a generic "Error loading" alert,
+// a swallowed catch, or (the wallet, until 2026-09-04) a confident "0 Mike Coins". The six Next.js
+// apps in this suite have caught this at the transport since day one (lib/supabase.ts ->
+// isCredentialRejection -> expireSession); this is the same idea, and the reason the scoreboard was
+// the odd one out is structural — it is the only single-file app, with a hand-rolled rpc().
+//
+// Cost is confined to the failure path: `ok` responses are returned untouched and only a failed
+// one is cloned and parsed.
+async function fetchWithSessionExpiry(input, init){
+  const res = await fetch(input, init);
+  if(res.ok || sbExpiring) return res;
+  try{
+    // Clone before reading: supabase-js still needs to read this body itself.
+    const body = await res.clone().json();
+    if(isCredsError(body)) sbExpireSentCredential(init && init.body);
+  }catch(e){
+    // Not JSON, or an empty body — nothing to classify, leave it to the caller.
+  }
+  return res;
+}
+
 const sb = supabase.createClient(
   'https://sralgaskfktcynpdxjhj.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyYWxnYXNrZmt0Y3lucGR4amhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NTU3NjUsImV4cCI6MjA5ODMzMTc2NX0.XqtIEprNHOZgXbI7hvn5O1OENQeLzbx5ZmvW9gV206E'
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyYWxnYXNrZmt0Y3lucGR4amhqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3NTU3NjUsImV4cCI6MjA5ODMzMTc2NX0.XqtIEprNHOZgXbI7hvn5O1OENQeLzbx5ZmvW9gV206E',
+  { global: { fetch: fetchWithSessionExpiry } }
 );
 
 // ── TIME-CLOCK CLIENT ──
@@ -730,6 +774,11 @@ const sb = supabase.createClient(
 // the time-clock repo: a secondary feature must never become a hard dependency of a primary
 // one. If the time-clock project is down, the lunch button silently disappears and the
 // leaderboard, sportsbook and commissions carry on untouched.
+//
+// ⚠️ And for the same reason this client deliberately does NOT get fetchWithSessionExpiry. A
+// refusal from the time-clock project says nothing about the scoreboard session, and signing
+// someone out of the leaderboard because a lunch punch was refused would make a secondary
+// feature able to break a primary one — exactly what the rule above forbids.
 const tct = supabase.createClient(
   'https://eawpwwctsifzcclrwvww.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVhd3B3d2N0c2lmemNjbHJ3dnd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NDQyMDYsImV4cCI6MjA5ODQyMDIwNn0.Hx1rE1bYd2J6f08W8LIKxJSldNzqiBl1JqfLR1M8zec'
@@ -745,6 +794,81 @@ let currentAgent=null; // {id,name,coins,pin} — pin kept in memory only, re-se
 // page reload or a jump via the "Go to" switcher doesn't force a fresh login)
 const AGENT_SESSION_KEY='fhe-scoreboard-agent-session';
 const ADMIN_SESSION_KEY='fhe-scoreboard-admin-session';
+
+// In-flight guard for the teardown below. A single page load fires several privileged RPCs at
+// once, so a dead token comes back refused N times — they must collapse into ONE sign-out.
+let sbExpiring=false;
+
+/**
+ * Which session did this refusal belong to?
+ *
+ * Unlike the sibling apps, THIS app can have two principals signed in in the same tab — the
+ * Agent Portal and the Admin tab are separate logins with separate tokens. So a refusal cannot
+ * be attributed by guessing from the RPC name; it is matched against the token that was actually
+ * sent. `p_pin` carries the agent token and `p_password` / `p_admin_password` the admin token —
+ * the parameter names are historical and were deliberately left alone in the token migration.
+ *
+ * `p_token` is excluded on purpose: that is `sb_end_session` / `sb_session_whoami`, i.e. a
+ * deliberate sign-out or a restore probe. Reacting to those would plant a "session expired"
+ * notice on someone who just clicked Log out.
+ */
+function sbExpireSentCredential(rawBody){
+  let sent;
+  try{
+    const b=JSON.parse(rawBody||'{}');
+    sent=[b.p_pin,b.p_password,b.p_admin_password].filter(v=>typeof v==='string'&&v);
+  }catch(e){return;}
+  if(!sent.length)return;
+  // Only tear down a session that was actually presented. A refusal with no live credential
+  // behind it is an anonymous caller poking a gated RPC, not a session going bad.
+  if(currentAgent&&sent.includes(currentAgent.token))sbExpireSession('agent');
+  else if(currentAdmin&&sent.includes(currentAdmin.token))sbExpireSession('admin');
+}
+
+/**
+ * Drop one principal's session and fall back to its login screen, with an explanation.
+ *
+ * Deliberately does NOT revoke server-side. The credential is already dead, so `sb_end_session`
+ * would just be a second doomed request — and one that could re-enter this very hook.
+ */
+function sbExpireSession(principal){
+  if(sbExpiring)return;
+  sbExpiring=true;
+  try{
+    if(principal==='agent'){
+      currentAgent=null;
+      sessionStorage.removeItem(AGENT_SESSION_KEY);
+      // The lunch bridge dies with it — same rule as agentLogout(): leaving the time-clock token
+      // alive would let the next person at this browser punch the first agent's lunch.
+      tctLogout();
+      refreshLunchNav();
+      document.getElementById('agent-login-section').style.display='block';
+      document.getElementById('agent-portal-section').style.display='none';
+      alert$('al-alert','Your session expired — please sign in again.','error');
+    }else{
+      currentAdmin=null;adminAuthed=false;selectedMgrUsername=null;
+      sessionStorage.removeItem(ADMIN_SESSION_KEY);
+      tctAdminLogout();
+      document.querySelectorAll('.mgr-btn').forEach(b=>b.classList.remove('selected'));
+      document.getElementById('admin-login-section').style.display='block';
+      document.getElementById('admin-panel-section').style.display='none';
+      document.getElementById('hdr-pcnt').style.display='none';
+      alert$('adl-alert','Your session expired — please sign in again.','error');
+    }
+    // The sportsbook runs on whichever principal is signed in, so it has to follow them out.
+    const bettorType=principal==='agent'?'agent':'manager';
+    if(sbCurrentBettor&&sbCurrentBettor.type===bettorType){
+      sbCurrentBettor=null;
+      document.getElementById('sb-main').style.display='none';
+      document.getElementById('sb-login-gate').style.display='block';
+      alert$('sb-gate-note','Your session expired — please sign in again. Your Mike Coins balance is untouched.','error');
+    }
+  }finally{
+    // Released on the next tick so one burst of refusals is one sign-out. Later refusals are
+    // harmless anyway: the matching principal is already null, so the teardown is idempotent.
+    setTimeout(()=>{sbExpiring=false;},0);
+  }
+}
 
 
 async function rpc(fn,args){
@@ -1499,16 +1623,6 @@ function getCurrentBettor(){
   return null;
 }
 
-// Every token-bearing RPC here RAISES 'invalid credentials' (P0001) on a dead or expired
-// session rather than returning an empty row — verified against production. Match on the
-// message, not the code alone: place_bet raises P0001 for ordinary refusals too
-// ('insufficient balance', 'exceeds max bet', 'line closed'), and those must not be read
-// as a logout. No other raise in this schema contains the string 'invalid credentials' —
-// checked against every `raise exception` in supabase/migrations.
-function isCredsError(e){
-  return !!e && /invalid credentials/i.test(e.message||'');
-}
-
 // Returns {ok:true,coins} | {ok:false,expired:bool}. It deliberately does NOT return a
 // number on failure. The old version was `.catch(()=>null)` and every caller did
 // `wallet?Number(wallet.coins)||0:0`, so an expired 12h token rendered as a perfectly
@@ -1527,19 +1641,19 @@ async function getBettorWallet(bettor){
   }
 }
 
-// A dead token is a sign-out, not a zero balance. Tear down the session that actually
-// expired (agentLogout/adminLogout also revoke server-side and kill the paired
-// time-clock token), drop back to the sportsbook gate, and say why.
-async function sbSessionExpired(){
+// A dead token is a sign-out, not a zero balance. Delegates to the one teardown so the wallet
+// path and the transport hook cannot disagree about what a dead session means.
+//
+// Since the transport hook landed this is usually a no-op — the refusal that got us here already
+// tore the session down on its way through. It stays because it is what guarantees the balance is
+// never rendered as a number, and because sbExpireSession is idempotent.
+//
+// It used to call agentLogout()/adminLogout(), which revoke server-side: a second doomed request
+// with an already-dead token, and a re-entry into the hook. sbExpireSession does not revoke.
+function sbSessionExpired(){
   const type=sbCurrentBettor?sbCurrentBettor.type:null;
-  sbCurrentBettor=null;
-  try{
-    if(type==='agent')await agentLogout();
-    else if(type==='manager')await adminLogout();
-  }catch(e){}
-  document.getElementById('sb-main').style.display='none';
-  document.getElementById('sb-login-gate').style.display='block';
-  alert$('sb-gate-note','Your session expired — please sign in again. Your Mike Coins balance is untouched.','error');
+  if(!type)return;
+  sbExpireSession(type==='agent'?'agent':'admin');
 }
 
 async function applyHouseCreditIfNeeded(bettor){
@@ -1790,7 +1904,7 @@ async function confirmBet(){
     const msg=(e&&e.message)||'';
     if(msg.includes('insufficient balance'))alert("You don't have enough Mike Coins for that bet.");
     else if(msg.includes('exceeds max bet'))alert('Max bet is 50% of your balance.');
-    else if(msg.includes('line closed')){alert('Betting is closed for this matchup — the book locked at 10:20 AM ET.');closeBetModal();loadSportsbook();}
+    else if(msg.includes('line closed')){alert('Betting is closed for this matchup — the book has locked.');closeBetModal();loadSportsbook();}
     else if(msg.includes('line not open')){alert('This line is no longer open.');closeBetModal();loadSportsbook();}
     else alert$('sb-alert','Error placing bet.','error');
   }
@@ -1844,16 +1958,12 @@ async function loadMyBets(){
 }
 
 async function loadBettorLeaderboard(){
-  const bets=await rpc('get_settled_bets_public',{});
+  // Summed per bettor in the database: pulling every settled bet and adding them up here
+  // would hit PostgREST's 1000-row cap and silently drop bets. See 20261022120000.
+  const rows=await rpc('get_bettor_leaderboard_public',{});
   const el=document.getElementById('sb-bettor-leaderboard');
-  if(!bets||!bets.length){el.innerHTML='<div class="empty">No settled bets yet</div>';return;}
-  const net={};
-  bets.forEach(b=>{
-    if(!net[b.bettor_name])net[b.bettor_name]=0;
-    if(b.status==='won')net[b.bettor_name]+=(Number(b.payout)-Number(b.amount));
-    else net[b.bettor_name]-=Number(b.amount);
-  });
-  const ranked=Object.entries(net).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  if(!rows||!rows.length){el.innerHTML='<div class="empty">No settled bets yet</div>';return;}
+  const ranked=rows.map(r=>[r.bettor_name,Number(r.net)]).sort((a,b)=>b[1]-a[1]).slice(0,10);
   el.innerHTML=ranked.map(([name,net],i)=>`<div class="entry-row flex-between">
     <div class="flex"><span style="font-family:'Barlow Condensed',sans-serif;font-weight:800;color:var(--gold);width:24px">${i+1}</span><span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;text-transform:uppercase">${esc(name)}</span></div>
     <span style="font-weight:700;color:${net>=0?'#4dd68c':'#f07070'}">${net>=0?'+':''}${net.toLocaleString()} coins</span>

@@ -43,7 +43,9 @@ const ENDPOINTS = [
   ["get_agent_streaks", {}],
   ["get_agents_board", {}],
   ["get_open_lines", {}],
-  ["get_settled_bets_public", {}],
+  // get_settled_bets_public is one row per bet and grows forever; nothing in the app reads it
+  // directly any more (the leaderboard sums it server-side), so watch what the app renders.
+  ["get_bettor_leaderboard_public", {}],
   ["list_admin_names", {}],
 ];
 

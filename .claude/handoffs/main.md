@@ -1,72 +1,86 @@
 # Session Handoff — main
-Generated: 2026-09-04 14:25
+Generated: 2026-10-22 14:10
 Worktree: /Users/derrickrodriguez/Projects/fhe-scoreboard
 
 ## What We Were Working On
-A reported "Albert has 0 Mike Coins" that turned out to be a **display lie, not a lost balance** —
-Albert Gonzalez has 2,067 coins and lifetime betting of net −33. Fixed the client-side bug class
-that invented the zero. **Nothing is in flight.**
-`APP_VERSION=2026-09-04-wallet-error-honesty-001`.
+**2026-10-22:** row-cap canary fix shipped — bettor leaderboard now summed server-side by
+`get_bettor_leaderboard_public()` (migration 20261022120000, applied + verified). The held
+2026-09-10 transport session hook shipped in the same push. Nothing in flight.
+
+_Earlier:_ Voiding Bryan Sequeira's Sep 8 bets so he could re-place them, plus a self-serve "take a bet back"
+button. **Bryan's half shipped and has since settled out. The button was written, then parked
+unbuilt at the user's request.** Nothing is in flight.
 
 ## Remaining Work
-No TASKS.md in this repo. Nothing outstanding in code. Carried over, all human-blocked:
-- Rotate the Slack bot token (passed through a chat transcript). Needs the Slack admin UI.
-- Decide whether lunch gets its own point tiers. It currently borrows `late_tier1..4_points`, so
-  60+ minutes over costs 5 points — the same as being an hour late for a shift. All three of
-  8/26's lunch penalties were waived by hand; if that repeats, split the keys.
-- PITR is disabled on `eawpwwctsifzcclrwvww`. Paid, and Derrick is a *member* not an admin on
-  that Supabase org since the migration — same blocker as raising `max_rows` from 1000.
-- **New:** the `.catch(()=>null)`-then-render-a-number pattern fixed here was never audited in the
-  five sibling apps. Worth one sweep.
-- Pre-existing here: `/favicon.ico` 404; real PINs live in this repo's git history, so never
-  blanket `git add -A` without looking.
+No TASKS.md in this repo. Nothing outstanding in code. All carried-over items are human-blocked:
+- **Supabase token is dead** (`sbp_c649…` → 401 from the CLI and from `api.supabase.com`). No SQL
+  or DDL is possible until it's replaced. `npx supabase login` will NOT work under Claude Code's
+  `!` prefix — non-TTY, `LegacyLoginMissingTokenError`. It needs a real terminal, and the durable
+  fix is a dashboard **Personal Access Token** (`npx supabase login --token …`), because
+  browser-flow tokens expire with the dashboard session. This has now bitten twice.
+- Derrick is a **member, not owner** on the FHE Supabase org since the 8/01 migration. That is a
+  403-class problem separate from the 401 above, and it is why PITR is off on `eawpwwctsifzcclrwvww`
+  and `max_rows` is stuck at 1000. One request to the org owner retires all three.
+- Rotate the Slack bot token (passed through a chat transcript).
+- **The credentials sheet was read into a transcript this session**, so every FHE PIN is in that
+  log. Rotation is the user's call.
+- Pre-existing: `/favicon.ico` 404; real PINs live in this repo's git history, so never blanket
+  `git add -A`.
 
 ## Key Decisions This Session
-- **An unreadable value must never render as a number.** `get_wallet` RAISES `P0001 invalid
-  credentials` on a dead token; the old `.catch(()=>null)` plus `wallet?Number(wallet.coins)||0:0`
-  turned that into a confident `🪙 0 Mike Coins`. Now: dead token → real sign-out with a message,
-  other failures → `🪙 —`, bet modal refuses to open on a balance it couldn't read.
-- **Match on the error message, never `P0001` alone.** `place_bet` raises P0001 for `insufficient
-  balance` / `exceeds max bet` / `line closed`; keying off the code would sign people out for
-  ordinary bet refusals. Verified no other `raise exception` in `supabase/migrations` contains
-  "invalid credentials".
-- `sbSessionExpired()` reuses `agentLogout`/`adminLogout` so the server-side revoke and the paired
-  time-clock token die with the scoreboard session.
+- **A withdrawn bet must be deleted, not restatused.** `sb_resettle_line` re-`pending`s every bet
+  on a line with no status filter, and its reversal loop matches only `won`/`refunded` — so a
+  `cancelled` row would keep its returned stake AND be paid out again. `settle_bet_line` isn't in
+  this repo (MCP-created) and can't be audited, so deletion is the only path that's safe under
+  every settler.
+- **There is no per-bet void RPC.** `cancel_bet_line` is line-level, so voiding one person's bets
+  refunds everyone on those lines. Bryan had bet all 9 lines, so this took out the whole day's book
+  and also refunded Gabriel Tamayo (5 bets / 5,325) — surfaced and approved before executing.
+- **`create_bet_line` takes no close-time parameter, so a recreated line has `closes_at = null` and
+  NEVER locks.** That's the no-SQL way to reopen a book, and a footgun.
+- Corrected mid-session: **there is no same-day settle deadline.** The settler only takes open
+  head_to_head lines with `created_at::date < today`, so today's lines cannot settle today.
 
 ## Kickstart Prompt
-> Read the last `## Session` block in `.claude/sessions/main.md`. Nothing is in flight.
+> Read the last `## Session` block in `.claude/sessions/main.md`. **Nothing is in flight.**
 >
-> Before changing anything in `index.html`: it is one ~143KB file. Edit with python string
-> replacements that assert a match count of 1, then syntax-check by extracting the inline
-> `<script>` blocks and running `node --check` on each. **Bump `APP_VERSION` in `<head>` on every
-> ship** or open tabs never see the change — and batch related changes into ONE deploy, because
-> each bump interrupts the whole floor with a full-screen overlay.
+> `index.html` + `TEST_LOG.md` are **uncommitted**: that's the 2026-09-04 transport session-hook
+> work (`fetchWithSessionExpiry`, tested PASS against prod, never shipped) plus a one-line alert
+> wording fix. `APP_VERSION` is `2026-09-04-transport-session-hook-002`. Shipping index.html ships
+> that hook — intended, but know it before you push.
 >
-> **If an agent reports missing coins/points, check the session before the ledger.** Coin Standings
-> calls `get_agents_board` (anon, tokenless) while the balance badge calls `get_wallet` (token). If
-> the standings show real coins and the badge shows 0, it's an expired token. As of
-> 2026-09-04 that renders as a sign-out instead of a zero.
+> **Before editing `index.html`:** it is one ~152KB file. Edit with python string replacements that
+> assert a match count of 1, then extract the inline `<script>` blocks and `node --check` each.
+> **Bump `APP_VERSION` on every ship** or open tabs never see the change — and batch related
+> changes into ONE deploy, because each bump interrupts the whole floor with a full-screen overlay.
+> Beware double-escaping in heredocs: `\\u2014` searches for a literal backslash and silently
+> matches nothing — use the real `—`.
 >
-> **Testing `index.html` in a browser:** top-level `let` bindings (`currentAgent`,
-> `sbCurrentBettor`) are NOT window properties — assign them directly inside `page.evaluate`, not
-> via `window.x =`, or your test silently exercises the wrong path. Function declarations (`rpc`)
-> *are* on `window` and can be stubbed. Don't call `navTo()` in a test; it fires an async
-> `initSportsbook()` that races your assertions.
+> **If someone reports an agent has no coins, read their PENDING BETS before the ledger.** Stakes
+> debit at placement, so a big open position looks like a drained wallet. On 2026-09-10 Bryan
+> Sequeira showed **1 coin** with 17 pending bets and 50,885 riding on "Marlon vs Abraham — Sep 10".
+> (The other false-zero cause is an expired session: Coin Standings calls `get_agents_board`, which
+> is anon and tokenless, while the badge calls `get_wallet` with a token. Standings right + badge 0
+> = the session.)
 >
-> If a missing lunch control is reported, check in this order before suspecting a bug: is there a
-> scoreboard session AND a time-clock bridge session; is the person `clock_in_exempt`; do their
-> PINs match across both apps. Parity was audited 2026-08-27 (17/17 agents, 5/7 admins) but that's
-> a snapshot — a one-sided PIN rotation silently removes the control.
+> **To void bets or reopen a book with no DB access** (the 2026-09-08 playbook, now in memory):
+> admin RPCs are anon-callable and guarded by the admin password, so drive them in a browser via
+> the page's own `rpc()` helper. `currentAdmin` is a top-level `let` — reachable by name inside
+> `page.evaluate` but NOT as `window.currentAdmin`. `get_all_bets_admin` does **not** return `id`
+> or `line_id`; get line ids from `get_all_lines_admin`. Admin PIN: read
+> `reference_credentials_sheet` in memory, don't ask. Capture a pre-state to
+> `~/Projects/_rollbacks/` first — cancelling refunds real stakes and is NOT reversible.
 >
-> If attendance events look missing, query `time_clock.attendance_event_audit` FIRST. On 8/27
-> three absent `lunch_late` rows read as a scoring bug and were a human deletion four minutes
-> earlier.
+> **The parked take-back button** is at `~/Projects/_rollbacks/parked-takeback-button-2026-09-08/`:
+> the migration (`bet_cancellations` table + `cancel_my_bet` + `get_my_bets` returning
+> `line_closes_at`) and a copy of index.html carrying the UI. Restoring is that migration plus three
+> edits to index.html. Read the migration's header before changing its approach — it documents why
+> the bet is deleted rather than restatused. **Needs the Supabase token; there is no browser
+> workaround for DDL.**
 >
 > Two databases: this app is Supabase `sralgaskfktcynpdxjhj`; the lunch bridge reaches
-> `eawpwwctsifzcclrwvww` (shared, no staging, **no PITR**). Use a `Zzz Smoke` disposable
-> contractor for anything mutating, delete it child-rows-first, and cast `id::text` for
-> `auth_sessions` or the batch rolls back and leaves the test row live in the admin dropdown.
+> `eawpwwctsifzcclrwvww` (shared, no staging, **no PITR**).
 >
-> Note: the Supabase CLI access token is EXPIRED as of 2026-09-02 — `supabase db query --linked`
-> returns 401. Read paths that still work: the anon key in `index.html` against
-> `<ref>.supabase.co/rest/v1/rpc/<anon-callable-fn>` (that's how Albert's balance was confirmed).
+> Settled and not to be re-litigated: **lunch does NOT get its own point tiers** (decided
+> 2026-08-27) — it keeps sharing `late_tier1..4_points`, and lunch points land in the one combined
+> total with attendance. Retuning *arrival* tiers still silently retunes lunch.
